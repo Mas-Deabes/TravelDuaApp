@@ -1,0 +1,16 @@
+Put duaa recordings (MP3) in this folder. They appear in the app automatically:
+select a duaa and they're listed in its Audio list.
+
+Name rules: lowercase letters, numbers and _ only. No spaces, dashes or capitals.
+
+Names that link the audio to a duaa:
+  duaa_full.mp3      Travel duaa (full) - Sahih Muslim 1342
+  duaa_riding.mp3    Duaa for getting in the car - Abu Dawud 2602
+  duaa_short.mp3     Short version - Az-Zukhruf 43:13-14
+
+More than one recording of the same duaa, e.g. different reciters:
+  duaa_full_mishary.mp3   is listed as "Mishary" under Travel duaa (full)
+
+Any other name, e.g. my_duaa.mp3, is listed under "My own recording" as "My duaa".
+
+This note file is ignored by the app.

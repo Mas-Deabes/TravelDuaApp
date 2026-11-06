@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.sif.travelduaa'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.sif.travelduaa'
+        minSdk 21
+        // 34, not 35: Android 15 blocks some start-up behaviour for apps that target 35.
+        targetSdk 34
+        // Each GitHub build gets a higher number, so a new APK installs over the old one.
+        versionCode = Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
+        versionName = "1.0." + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+    }
+
+    signingConfigs {
+        release {
+            // Same key every build, so updates install without uninstalling first.
+            storeFile file('release.keystore')
+            storePassword 'travelduaa'
+            keyAlias 'duaa'
+            keyPassword 'travelduaa'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

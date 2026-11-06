@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#0E6B4F"
+        android:pathData="M54,4 A50,50 0 1,1 53.99,4 Z" />
+    <!-- crescent -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M60,24 A30,30 0 1,0 60,84 A36,36 0 0,1 60,24 Z" />
+    <!-- play triangle -->
+    <path android:fillColor="#F2C94C"
+        android:pathData="M58,40 L80,54 L58,68 Z" />
+</vector>
