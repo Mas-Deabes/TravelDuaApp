@@ -2,8 +2,7 @@ name: Build APK
 
 # Runs every time you push changes, or when you press "Run workflow" on the Actions tab.
 on:
-  push:
-    branches: [ main ]
+  push:            # any branch (Android Studio often calls it "master", GitHub "main")
   workflow_dispatch:
 
 permissions:
