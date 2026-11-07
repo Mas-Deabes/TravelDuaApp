@@ -12,20 +12,29 @@ It runs either on **your phone** (plays through the car speakers over Bluetooth)
 
 ## Features
 
+**The duaa**
 - **Plays by itself** when the car starts or your phone connects to the car.
-- **Pick the duaa** from a list, with its full **Arabic text and source** (checked against the hadith collections) and its **English meaning** underneath.
-- **Choose the audio** for each duaa: one built into the app, or your own MP3.
-- **Several cars**: in phone mode, choose which Bluetooth devices count as your car(s). Headphones and speakers are ignored.
-- **Test button** that runs the real start-up steps, so you can check it without driving.
-- **Event log** showing what happened at each start-up, for troubleshooting.
-- **Open an app after the duaa** (head unit), e.g. CPLink for CarPlay, so it starts once the duaa has finished.
-- **Show the app while the duaa plays** (head unit): brings Travel Duaa to the front, e.g. over CPLink, with a "Now playing" banner.
-- **Guided setup** on first launch, ending with a live test in the car.
-- **Needs attention** checklist on the main screen: anything that would stop the duaa playing, with a button to fix it.
-- **Light and dark mode** (dark by default), or follow the system.
-- **Dark design** that's easy to read in the car at night, with large buttons.
+- **Pick the duaa** from a list, with its full **Arabic text and source** (checked against the hadith collections), its **transliteration** and its **English meaning**.
+- **Choose the audio** for each duaa: built into the app, your own MP3, or **record your own voice** in the app. Each audio has its own volume slider.
+- **Follow along:** while it plays, the phrase being recited is highlighted, and shown large in the "Now playing" bar.
+- **Return duaa** (آيبون تائبون…) when you arrive: phone mode, when the phone disconnects from the car after a trip.
+- **Morning & evening dhikr** after the travel duaa, once each morning and evening.
 
----
+**When and how it plays**
+- **How often:** every start, once a day (first trip), or at most every 2 / 4 / 6 hours.
+- **Quiet hours:** late at night, play more quietly or not at all.
+- **Music or radio:** lowered during the duaa (default), or paused and resumed afterwards.
+- **Several cars** (phone mode), each with its own duaa if you like. Headphones and speakers are ignored.
+- **Head unit:** open an app after the duaa (e.g. CPLink for CarPlay), and optionally show Travel Duaa while it plays.
+
+**Easy to use**
+- **Guided setup** on first launch, ending with a live test in the car.
+- **English 🇬🇧 or Arabic 🇪🇬** interface (العربية, right to left), and **light or dark** mode.
+- **Needs attention** checklist: anything that would stop the duaa playing, with a button to fix it.
+- **In-app updates** from GitHub Releases.
+- **Backup and restore** of settings and recordings to one file.
+- **Home screen widget** (phone): one tap plays the duaa.
+- **Event log** with a **Share** button, for troubleshooting.
 
 ## The two modes
 
@@ -48,6 +57,8 @@ It runs either on **your phone** (plays through the car speakers over Bluetooth)
 | Travel duaa (full) | دعاء السفر كاملاً | Sahih Muslim 1342 |
 | Duaa for getting in the car | دعاء الركوب | Abu Dawud 2602, Tirmidhi 3446 |
 | Short version (Quran verses) | الآيتان من سورة الزخرف | Surah Az-Zukhruf 43:13-14 |
+| Return duaa (on arrival) | دعاء الرجوع من السفر | Sahih Muslim 1342 |
+| Morning & evening dhikr (×3) | ذكر الصباح والمساء | Abu Dawud 5088, Tirmidhi 3388 |
 
 Tap a duaa to select it. The app shows its full Arabic text, with the English meaning underneath.
 
@@ -112,6 +123,8 @@ Every audio file in that folder **appears in that duaa's Audio list automaticall
 | `duaa_full_mishary.mp3` | Travel duaa (full) | Mishary |
 | `duaa_riding.mp3` | Duaa for getting in the car | Standard recording |
 | `duaa_short.mp3` | Short version | Standard recording |
+| `duaa_return.mp3` | Return duaa | Standard recording |
+| `duaa_dhikr.mp3` | Morning & evening dhikr | Standard recording |
 | `my_duaa.mp3` | My own recording | My duaa |
 
 To offer several reciters for one duaa, add `_name` to the end: `duaa_full_mishary.mp3`, `duaa_full_sudais.mp3` and so on. They all appear in that duaa's **Audio** list.
@@ -125,6 +138,44 @@ To offer several reciters for one duaa, add `_name` to the end: `duaa_full_misha
 **If you share the app**, only build in recordings you have permission to use. Recording it yourself avoids this.
 
 ---
+
+## Settings at a glance (⚙️ Settings)
+
+| Section | What's in it |
+|---|---|
+| Installed on | Phone or head unit (Change opens the setup) |
+| Head unit / My cars | When to play, delays, CPLink, show while playing · or your cars, each with its own duaa |
+| Playing | How often · Quiet hours · Lower or pause music |
+| More duaas | Morning & evening dhikr · Return duaa (phone) — each with its own audio list and Record button |
+| Language and text | English / العربية · transliteration · English meaning · follow along |
+| If it doesn't play after the car wakes | Extra reliability helper · "Do not sleep" tip (head unit) |
+| Appearance | Dark / Light / Follow system · Run the setup again |
+| Backup and restore | Save everything to a .zip, restore it on another device |
+| Updates | Check for updates · Download & install |
+
+## In-app updates
+
+The app checks this repo's **Releases** once a day and shows **Update available** with an **Install** button. Android then asks you to confirm.
+
+**Needs a public repo.** GitHub doesn't let apps read the releases of a private repo. Before making the repo public, move the signing key out of the repo into GitHub secrets:
+
+1. On your PC, in the project folder (Git Bash):
+   ```bash
+   base64 -w 0 app/release.keystore > keystore.txt
+   ```
+2. On GitHub: **Settings → Secrets and variables → Actions → New repository secret**, and add:
+   | Name | Value |
+   |---|---|
+   | `KEYSTORE_BASE64` | the contents of `keystore.txt` |
+   | `KEYSTORE_PASSWORD` | `travelduaa` |
+   | `KEY_ALIAS` | `duaa` |
+   | `KEY_PASSWORD` | `travelduaa` |
+3. Delete `app/release.keystore` and `keystore.txt` from the repo (keep a copy of the keystore somewhere safe, e.g. a USB stick). Commit and push.
+4. **Settings → General → Change visibility → Public.**
+
+The build uses the secret when it's there, so every APK is still signed with the same key and installs over the old one. The first time, Android asks you to allow **Install unknown apps** for Travel Duaa.
+
+**Renaming the repo** (e.g. to `TravelDuaApp`) is fine: the app reads the repo name from GitHub at build time, so the next build checks the new name.
 
 ## Getting the APK
 
@@ -266,6 +317,10 @@ Requirements: Android Studio (or JDK 17 + Android SDK 35). The app runs on Andro
 | `BootReceiver.java` | Head unit mode: boot and ignition signals |
 | `BluetoothReceiver.java` | Phone mode: car Bluetooth connect / disconnect |
 | `WakeHelperService.java` | Optional "Extra reliability" accessibility helper (head unit) |
+| `Updater.java` | Checks GitHub Releases, downloads and installs updates |
+| `Backup.java` | Backup / restore of settings and recordings (.zip) |
+| `DuaWidget.java` | Home screen widget |
+| `Lang.java`, `ArabicStrings.java` | English / Arabic interface |
 | `Compat.java` | Calls that differ between Android versions |
 | `Prefs.java` | Saved settings, the cars list and the event log |
 | `.github/workflows/build.yml` | The GitHub build that publishes the APK to Releases |
@@ -274,4 +329,4 @@ Requirements: Android Studio (or JDK 17 + Android SDK 35). The app runs on Andro
 
 ## Signing key
 
-`app/release.keystore` signs every build with the same key, so updates install over the old version. Anyone with this file can sign apps as you, so keep the repo **private**, or move the key into GitHub Secrets before making it public.
+Every build is signed with the same key, so updates install over the old version. By default it's `app/release.keystore` in the repo; anyone with that file can sign apps as you, so keep the repo **private** — or move the key into GitHub secrets (see **In-app updates** above) and then make the repo public.

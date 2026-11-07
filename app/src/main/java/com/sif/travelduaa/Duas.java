@@ -20,6 +20,8 @@ import java.util.Locale;
  *   duaa_full.mp3, duaa_full_mishary.mp3  → Travel duaa (full)
  *   duaa_riding.mp3                        → Duaa for getting in the car
  *   duaa_short.mp3                         → Short version
+ *   duaa_return.mp3                        → Return duaa
+ *   duaa_dhikr.mp3                         → Morning & evening dhikr
  *   any other name                         → My own recording
  */
 public class Duas {
@@ -36,15 +38,22 @@ public class Duas {
         public final String text;
         /** English meaning, so users who don't read Arabic understand the duaa. */
         public final String meaning;
+        /** The Arabic in Latin letters, for people who can't read Arabic script. */
+        public final String translit;
 
-        Dua(String id, String title, String titleAr, String source, String text, String meaning) {
+        Dua(String id, String title, String titleAr, String source, String text, String meaning,
+            String translit) {
             this.id = id;
             this.title = title;
             this.titleAr = titleAr;
             this.source = source;
             this.text = text;
             this.meaning = meaning;
+            this.translit = translit;
         }
+
+        /** Title in the app's language. */
+        public String displayTitle() { return Lang.isArabic() ? titleAr : title; }
 
         public boolean isCustom() { return CUSTOM.equals(id); }
     }
@@ -76,7 +85,16 @@ public class Duas {
                             + "and the One who looks after the family we leave behind. "
                             + "O Allah, I seek refuge in You from the hardships of travel, "
                             + "from distressing sights, "
-                            + "and from returning to find harm in my wealth or family."),
+                            + "and from returning to find harm in my wealth or family.",
+                    "Allāhu akbar, Allāhu akbar, Allāhu akbar. "
+                            + "Subḥāna-lladhī sakhkhara lanā hādhā wa mā kunnā lahu muqrinīn, "
+                            + "wa innā ilā rabbinā la-munqalibūn. "
+                            + "Allāhumma innā nas'aluka fī safarinā hādha-l-birra wa-t-taqwā, "
+                            + "wa mina-l-'amali mā tarḍā. "
+                            + "Allāhumma hawwin 'alaynā safaranā hādhā, wa-ṭwi 'annā bu'dah. "
+                            + "Allāhumma anta-ṣ-ṣāḥibu fi-s-safar, wa-l-khalīfatu fi-l-ahl. "
+                            + "Allāhumma innī a'ūdhu bika min wa'thā'i-s-safar, wa ka'ābati-l-manẓar, "
+                            + "wa sū'i-l-munqalabi fi-l-māli wa-l-ahl."),
             new Dua("riding",
                     "Duaa for getting in the car",
                     "دعاء الركوب",
@@ -95,7 +113,14 @@ public class Duas {
                             + "All praise is for Allah, all praise is for Allah, all praise is for Allah. "
                             + "Allah is the Greatest, Allah is the Greatest, Allah is the Greatest. "
                             + "Glory be to You, O Allah. I have wronged myself, so forgive me, "
-                            + "for no one forgives sins except You."),
+                            + "for no one forgives sins except You.",
+                    "Bismillāh. Al-ḥamdu lillāh. "
+                            + "Subḥāna-lladhī sakhkhara lanā hādhā wa mā kunnā lahu muqrinīn, "
+                            + "wa innā ilā rabbinā la-munqalibūn. "
+                            + "Al-ḥamdu lillāh, al-ḥamdu lillāh, al-ḥamdu lillāh. "
+                            + "Allāhu akbar, Allāhu akbar, Allāhu akbar. "
+                            + "Subḥānaka-llāhumma innī ẓalamtu nafsī fa-ghfir lī, "
+                            + "fa-innahu lā yaghfiru-dh-dhunūba illā ant."),
             new Dua("short",
                     "Short version (Quran verses)",
                     "الآيتان من سورة الزخرف",
@@ -104,18 +129,45 @@ public class Duas {
                             + "وَإِنَّا إِلَى رَبِّنَا لَمُنْقَلِبُونَ.",
                     "Glory be to the One who has placed this at our service, "
                             + "for we could never have done it ourselves, "
-                            + "and to our Lord we will surely return."),
+                            + "and to our Lord we will surely return.",
+                    "Subḥāna-lladhī sakhkhara lanā hādhā wa mā kunnā lahu muqrinīn, "
+                            + "wa innā ilā rabbinā la-munqalibūn."),
             new Dua(CUSTOM,
                     "My own recording",
                     "تسجيل من اختياري",
                     "Any audio you choose",
                     "",
+                    "",
                     ""),
     };
 
+    /** Said when arriving back from the journey (added to the travel duaa in the same hadith). */
+    public static final Dua RETURN = new Dua("return",
+            "Return duaa (arriving back)",
+            "دعاء الرجوع من السفر",
+            "Sahih Muslim 1342",
+            "آيِبُونَ، تَائِبُونَ، عَابِدُونَ، لِرَبِّنَا حَامِدُونَ.",
+            "We return, repenting, worshipping, and praising our Lord.",
+            "Āyibūna, tā'ibūna, 'ābidūna, li-rabbinā ḥāmidūn.");
+
+    /** Morning and evening dhikr, said three times. */
+    public static final Dua DHIKR = new Dua("dhikr",
+            "Morning & evening dhikr",
+            "ذكر الصباح والمساء",
+            "Abu Dawud 5088, Tirmidhi 3388",
+            "بِسْمِ اللهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ فِي الْأَرْضِ وَلَا فِي السَّمَاءِ، "
+                    + "وَهُوَ السَّمِيعُ الْعَلِيمُ.",
+            "In the name of Allah, with whose name nothing on earth or in the heavens can cause harm, "
+                    + "and He is the All-Hearing, the All-Knowing. (Said three times, morning and evening.)",
+            "Bismillāhi-lladhī lā yaḍurru ma'a-smihi shay'un fi-l-arḍi wa lā fi-s-samā', "
+                    + "wa huwa-s-samī'u-l-'alīm.");
+
+    /** Every duaa with its own audio list: the four to choose from, plus return and dhikr. */
+    public static final Dua[] EVERY = {ALL[0], ALL[1], ALL[2], RETURN, DHIKR, ALL[3]};
+
     public static Dua byId(String id) {
         if ("other".equals(id)) id = CUSTOM;   // name used by an earlier version
-        for (Dua d : ALL) if (d.id.equals(id)) return d;
+        for (Dua d : EVERY) if (d.id.equals(id)) return d;
         return ALL[0];
     }
 
@@ -150,6 +202,9 @@ public class Duas {
 
         public boolean isBuiltIn() { return rawRes != 0; }
 
+        /** Name in the app's language ("Standard recording" → "التسجيل الأساسي"). */
+        public String displayName() { return Lang.tr(name); }
+
         public String where() { return isBuiltIn() ? "built into the app" : "added by you"; }
     }
 
@@ -170,7 +225,7 @@ public class Duas {
                 if (NOT_AUDIO.contains(file)) continue;
                 String duaId = CUSTOM;
                 String name = pretty(file);
-                for (Dua d : ALL) {
+                for (Dua d : EVERY) {
                     if (d.isCustom()) continue;
                     String base = "duaa_" + d.id;
                     if (file.equals(base)) {
@@ -233,6 +288,19 @@ public class Duas {
 
     public static void setVolume(Context c, Recording r, int percent) {
         Prefs.get(c).edit().putInt("vol_" + r.key, Math.max(10, Math.min(200, percent))).apply();
+    }
+
+    /** Phone mode: the duaa chosen for one car, or null to use the main choice. */
+    public static Dua duaForCar(Context c, String address) {
+        if (address == null) return null;
+        String id = Prefs.get(c).getString("car_dua_" + address.toUpperCase(), "");
+        return id.isEmpty() ? null : byId(id);
+    }
+
+    public static void setDuaForCar(Context c, String address, Dua d) {
+        String k = "car_dua_" + address.toUpperCase();
+        if (d == null) Prefs.get(c).edit().remove(k).apply();
+        else Prefs.get(c).edit().putString(k, d.id).apply();
     }
 
     /** What plays when the car starts: the chosen audio of the selected duaa. */

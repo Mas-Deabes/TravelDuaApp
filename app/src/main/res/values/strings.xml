@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Travel Duaa</string>
+    <string name="widget_title">▶  Travel Duaa</string>
+    <string name="widget_description">Tap to play the travel duaa</string>
     <string name="wake_helper_label">Travel Duaa – car start helper</string>
     <string name="wake_helper_description">Keeps Travel Duaa running while the head unit sleeps, so the travel duaa can play when you start the car. It only notices when the screen changes; it does not read what is on the screen.</string>
 </resources>

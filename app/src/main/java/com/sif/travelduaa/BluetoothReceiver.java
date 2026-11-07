@@ -20,17 +20,25 @@ public class BluetoothReceiver extends BroadcastReceiver {
         String name = Prefs.cars(context).get(address.toUpperCase());
 
         Intent service = new Intent(context, DuaaService.class);
+        service.putExtra(DuaaService.EXTRA_CAR, address);
         if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(intent.getAction())) {
             Prefs.log(context, "Connected to " + name);
+            Prefs.get(context).edit().putLong(Prefs.CONNECTED_AT, System.currentTimeMillis()).apply();
             service.setAction(DuaaService.ACTION_PHONE_CONNECTED);
             Compat.startService(context, service);
         } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(intent.getAction())) {
             Prefs.log(context, "Disconnected from " + name);
-            // Only needed if the duaa is waiting or playing right now.
-            if (DuaaService.running) {
+            long since = Prefs.get(context).getLong(Prefs.CONNECTED_AT, 0);
+            boolean wasATrip = since > 0 && System.currentTimeMillis() - since >= 2 * 60_000;
+            if (Prefs.get(context).getBoolean(Prefs.RETURN_ON, false) && wasATrip) {
+                // Trip over: the return duaa plays on the phone (the car is gone).
+                service.setAction(DuaaService.ACTION_PHONE_RETURN);
+                Compat.startService(context, service);
+            } else if (DuaaService.running) {
                 service.setAction(DuaaService.ACTION_PHONE_DISCONNECTED);
                 context.startService(service);
             }
+            Prefs.get(context).edit().remove(Prefs.CONNECTED_AT).apply();
         }
     }
 }

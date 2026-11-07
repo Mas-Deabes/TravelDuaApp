@@ -47,6 +47,12 @@ public class DuaaService extends Service {
     public static final String ACTION_HU_WOKE = "com.sif.travelduaa.HU_WOKE";
     /** From the accessibility helper after it (re)connects: check how long the app was gone. */
     public static final String ACTION_HU_CHECK_AWAY = "com.sif.travelduaa.HU_CHECK_AWAY";
+    /** Phone: the car disconnected after a trip, play the return duaa on the phone. */
+    public static final String ACTION_PHONE_RETURN = "com.sif.travelduaa.PHONE_RETURN";
+    public static final String EXTRA_CAR = "car";
+    /** Play one particular duaa now (from its own Play button in the app). */
+    public static final String ACTION_PLAY_DUA = "com.sif.travelduaa.PLAY_DUA";
+    public static final String EXTRA_DUA = "dua";
     /** Volume slider moved: apply it now if that recording is playing. */
     public static final String ACTION_VOLUME = "com.sif.travelduaa.VOLUME";
     public static final String EXTRA_KEY = "key";
@@ -101,6 +107,10 @@ public class DuaaService extends Service {
     public static volatile boolean running = false;
     /** Title of the duaa playing right now, or null. Shown as a banner in the app. */
     public static volatile String nowPlaying = null;
+    /** For "follow along": which duaa is playing, when it started and how long it is. */
+    public static volatile String nowPlayingId = null;
+    public static volatile long playStartedAt = 0;      // SystemClock.uptimeMillis()
+    public static volatile long playDurationMs = 0;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private MediaPlayer player;
@@ -116,6 +126,12 @@ public class DuaaService extends Service {
     private long lastSavedAlive = 0;
     /** True when the next play() is an automatic start (or the Test button), not "Play". */
     private boolean nextIsStartUp = false;
+    private boolean nextIsTest = false;
+    /** Duaas still to play in this sequence, e.g. travel duaa → morning dhikr. */
+    private final java.util.ArrayList<Duas.Dua> queue = new java.util.ArrayList<>();
+    private boolean queueIsStartUp = false;
+    private float volumeFactor = 1f;          // 0.4 during quiet hours ("play quietly")
+    private String currentCar = null;         // phone: address of the car that connected
 
     private final AudioManager.OnAudioFocusChangeListener focusListener = change -> { };
     private final Runnable playRunnable = this::play;
@@ -162,6 +178,7 @@ public class DuaaService extends Service {
         super.onCreate();
         running = true;
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        Lang.load(this);
         if (Prefs.isHeadUnit(this)) Prefs.log(this, "Background service started");
     }
 
@@ -213,22 +230,41 @@ public class DuaaService extends Service {
                 if (firstStart) checkTimeAway("App started by the helper");
                 break;
             case ACTION_PHONE_CONNECTED:
+                currentCar = intent.getStringExtra(EXTRA_CAR);
                 phoneConnected();
                 break;
+            case ACTION_PHONE_RETURN:
+                handler.removeCallbacks(playRunnable);
+                handler.removeCallbacks(waitForBluetoothAudio);
+                stopPlayer();
+                Prefs.log(this, "Trip ended: playing the return duaa");
+                volumeFactor = 1f;
+                handler.postDelayed(() -> playSequence(single(Duas.RETURN), false), 1500);
+                break;
             case ACTION_PHONE_DISCONNECTED:
+                currentCar = null;
+                // fall through
             case ACTION_STOP:
                 handler.removeCallbacks(playRunnable);
                 handler.removeCallbacks(waitForBluetoothAudio);
+                queue.clear();
                 stopPlayer();
                 if (!headUnit) stopEverything();
                 break;
             case ACTION_PLAY_NOW:
                 handler.removeCallbacks(playRunnable);
                 nextIsStartUp = false;
-                play();
+                volumeFactor = 1f;
+                playSequence(single(Duas.selectedDua(this)), false);
                 break;
             case ACTION_TEST:
                 runTest(headUnit);
+                break;
+            case ACTION_PLAY_DUA:
+                handler.removeCallbacks(playRunnable);
+                nextIsStartUp = false;
+                volumeFactor = 1f;
+                playSequence(single(Duas.byId(intent.getStringExtra(EXTRA_DUA))), false);
                 break;
             case ACTION_VOLUME:
                 if (player != null && intent.getStringExtra(EXTRA_KEY) != null
@@ -332,12 +368,57 @@ public class DuaaService extends Service {
             Prefs.log(this, "Skipped: already played in the last " + duration(window));
             return;
         }
+        if (!rulesAllowPlaying()) return;
         markPlayed();
         int delay = p.getInt(Prefs.HU_DELAY, 5);
         handler.removeCallbacks(playRunnable);
         nextIsStartUp = true;
         handler.postDelayed(playRunnable, delay * 1000L);
         Prefs.log(this, "Will play in " + delay + " s");
+    }
+
+    /**
+     * "How often" and "Quiet hours". Sets volumeFactor. Returns false (and logs why) to skip.
+     */
+    private boolean rulesAllowPlaying() {
+        SharedPreferences p = Prefs.get(this);
+        volumeFactor = 1f;
+
+        int freq = p.getInt(Prefs.FREQUENCY_H, 0);
+        long last = p.getLong(Prefs.LAST_PLAYED, 0);
+        long now = System.currentTimeMillis();
+        if (freq == -1 && last > 0 && sameDay(last, now)) {
+            Prefs.log(this, "Skipped: set to play once a day, already played today");
+            return false;
+        }
+        if (freq > 0 && now - last < freq * 3_600_000L && now >= last) {
+            Prefs.log(this, "Skipped: set to play at most every " + freq + " h");
+            return false;
+        }
+
+        if (p.getBoolean(Prefs.QUIET_ON, false) && inQuietHours(p)) {
+            if (p.getBoolean(Prefs.QUIET_SKIP, false)) {
+                Prefs.log(this, "Skipped: quiet hours");
+                return false;
+            }
+            volumeFactor = 0.4f;
+            Prefs.log(this, "Quiet hours: playing at a lower volume");
+        }
+        return true;
+    }
+
+    static boolean inQuietHours(SharedPreferences p) {
+        int from = p.getInt(Prefs.QUIET_FROM, 23), to = p.getInt(Prefs.QUIET_TO, 6);
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        return from <= to ? (h >= from && h < to) : (h >= from || h < to);   // e.g. 23 → 6 wraps midnight
+    }
+
+    private static boolean sameDay(long a, long b) {
+        java.util.Calendar x = java.util.Calendar.getInstance(), y = java.util.Calendar.getInstance();
+        x.setTimeInMillis(a);
+        y.setTimeInMillis(b);
+        return x.get(java.util.Calendar.YEAR) == y.get(java.util.Calendar.YEAR)
+                && x.get(java.util.Calendar.DAY_OF_YEAR) == y.get(java.util.Calendar.DAY_OF_YEAR);
     }
 
     // ---------- Test button ----------
@@ -350,12 +431,17 @@ public class DuaaService extends Service {
             int delay = Prefs.get(this).getInt(Prefs.HU_DELAY, 5);
             Prefs.log(this, "TEST: pretending the car just started. Playing in " + delay + " s");
             nextIsStartUp = true;
+            nextIsTest = true;
+            volumeFactor = 1f;
             handler.postDelayed(playRunnable, delay * 1000L);
         } else {
             int delay = Prefs.get(this).getInt(Prefs.PHONE_DELAY, 2);
             Prefs.log(this, bluetoothAudioReady()
                     ? "TEST: car Bluetooth audio is connected. Playing in " + delay + " s"
                     : "TEST: no Bluetooth audio right now, playing on this phone in " + delay + " s");
+            nextIsStartUp = true;
+            nextIsTest = true;
+            volumeFactor = 1f;
             acquireWakeLock();
             handler.postDelayed(playRunnable, delay * 1000L);
         }
@@ -366,12 +452,16 @@ public class DuaaService extends Service {
     private void phoneConnected() {
         if (!Prefs.get(this).getBoolean(Prefs.ENABLED, true)) {
             Prefs.log(this, "Skipped: auto-play is off");
-            stopEverything();
+            stopIfNothingElse();
             return;
         }
         if (playedWithin(Prefs.PHONE_DEBOUNCE_MS)) {
             Prefs.log(this, "Skipped: already played in the last 10 min");
-            stopEverything();
+            stopIfNothingElse();
+            return;
+        }
+        if (!rulesAllowPlaying()) {
+            stopIfNothingElse();
             return;
         }
         markPlayed();
@@ -393,6 +483,7 @@ public class DuaaService extends Service {
             Prefs.log(this, ready
                     ? "Bluetooth audio ready after " + (waited / 1000) + " s"
                     : "Bluetooth audio not detected, playing anyway");
+            nextIsStartUp = true;
             handler.postDelayed(playRunnable, delay * 1000L);
         } else {
             handler.postDelayed(waitForBluetoothAudio, 1000);
@@ -412,15 +503,72 @@ public class DuaaService extends Service {
 
     // ---------- Playback ----------
 
+    /** Runs after the start-up delay: a car start plays the start-up sequence. */
     private void play() {
-        final boolean startUp = nextIsStartUp;
+        boolean startUp = nextIsStartUp, test = nextIsTest;
         nextIsStartUp = false;
-        Duas.Dua dua = Duas.selectedDua(this);
+        nextIsTest = false;
+        if (startUp) {
+            playSequence(startUpQueue(test), true);
+        } else {
+            playSequence(single(Duas.selectedDua(this)), false);
+        }
+    }
+
+    private static java.util.ArrayList<Duas.Dua> single(Duas.Dua d) {
+        java.util.ArrayList<Duas.Dua> l = new java.util.ArrayList<>();
+        l.add(d);
+        return l;
+    }
+
+    /**
+     * What a car start plays: the travel duaa (or this car's own duaa, in phone mode),
+     * then the morning / evening dhikr if it's on and hasn't been played in this part of the day.
+     */
+    private java.util.ArrayList<Duas.Dua> startUpQueue(boolean test) {
+        Duas.Dua main = Duas.duaForCar(this, currentCar);
+        if (main == null) main = Duas.selectedDua(this);
+        java.util.ArrayList<Duas.Dua> list = single(main);
+
+        SharedPreferences p = Prefs.get(this);
+        if (!test && p.getBoolean(Prefs.DHIKR_ON, false)) {
+            String slot = dhikrSlot();
+            if (slot != null && !slot.equals(p.getString(Prefs.DHIKR_DONE, ""))) {
+                list.add(Duas.DHIKR);
+                p.edit().putString(Prefs.DHIKR_DONE, slot).apply();
+            }
+        }
+        return list;
+    }
+
+    /** "2026-11-07-am" from 3:00 to 11:59, "…-pm" from 15:00 to 23:59, otherwise null. */
+    private static String dhikrSlot() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        int h = c.get(java.util.Calendar.HOUR_OF_DAY);
+        String day = c.get(java.util.Calendar.YEAR) + "-" + c.get(java.util.Calendar.DAY_OF_YEAR);
+        if (h >= 3 && h < 12) return day + "-am";
+        if (h >= 15) return day + "-pm";
+        return null;
+    }
+
+    /** Plays the duaas one after another. A duaa with no audio is skipped. */
+    private void playSequence(java.util.ArrayList<Duas.Dua> duas, boolean startUp) {
+        queue.clear();
+        queue.addAll(duas);
+        queueIsStartUp = startUp;
+        playNextInQueue();
+    }
+
+    private void playNextInQueue() {
+        if (queue.isEmpty()) {
+            sequenceFinished();
+            return;
+        }
+        Duas.Dua dua = queue.remove(0);
         Duas.Recording rec = Duas.audioFor(this, dua);
         if (rec == null) {
             Prefs.log(this, "No audio for \"" + dua.title + "\". Choose or add one in the app.");
-            if (startUp) openAfterApp();
-            if (!Prefs.isHeadUnit(this)) stopEverything();
+            playNextInQueue();
             return;
         }
         stopPlayer();
@@ -441,25 +589,40 @@ public class DuaaService extends Service {
             applyVolume(Duas.volume(this, rec));
             player.setOnCompletionListener(mp -> {
                 stopPlayer();
-                Prefs.log(this, "Duaa finished");
-                if (startUp) openAfterApp();
-                if (!Prefs.isHeadUnit(this)) stopEverything();
+                Prefs.log(this, "Finished: " + dua.title);
+                playNextInQueue();
             });
-            // Ask the radio / music app to go quieter while the duaa plays.
-            audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC,
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+            // Other audio: lowered (default) or paused, and given back afterwards.
+            boolean pause = Prefs.get(this).getBoolean(Prefs.PAUSE_MUSIC, false);
+            audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, pause
+                    ? AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                    : AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
             acquireWakeLock();
             player.start();
-            nowPlaying = dua.title;
-            if (startUp) showAppIfWanted();
+            nowPlaying = dua.displayTitle();
+            nowPlayingId = dua.id;
+            playStartedAt = SystemClock.uptimeMillis();
+            playDurationMs = Math.max(1, player.getDuration());
+            if (queueIsStartUp && dua != Duas.DHIKR) showAppIfWanted();
             Prefs.log(this, "▶ Playing: " + dua.title + " (" + rec.name + ", "
-                    + Duas.volume(this, rec) + "%)");
+                    + Duas.volume(this, rec) + "%" + (volumeFactor < 1f ? ", quiet hours" : "") + ")");
         } catch (Exception e) {
             Prefs.log(this, "Playback error: " + e.getMessage());
             stopPlayer();
-            if (startUp) openAfterApp();
-            if (!Prefs.isHeadUnit(this)) stopEverything();
+            playNextInQueue();
         }
+    }
+
+    /** Everything played: open the "after" app (head unit), or stop (phone, unless still needed). */
+    private void sequenceFinished() {
+        if (queueIsStartUp) openAfterApp();
+        queueIsStartUp = false;
+        if (!Prefs.isHeadUnit(this)) stopIfNothingElse();
+    }
+
+    /** Phone mode: the service stops once nothing is playing. */
+    private void stopIfNothingElse() {
+        if (player == null) stopEverything();
     }
 
     /** Head unit: opens the app chosen under "After the duaa, open" (e.g. CPLink / CarPlay). */
@@ -489,7 +652,7 @@ public class DuaaService extends Service {
      */
     private void applyVolume(int percent) {
         if (player == null) return;
-        float v = Math.max(10, Math.min(200, percent)) / 100f;
+        float v = Math.max(10, Math.min(200, percent)) / 100f * volumeFactor;
         player.setVolume(Math.min(1f, v), Math.min(1f, v));
         try {
             if (v > 1f) {
@@ -522,6 +685,7 @@ public class DuaaService extends Service {
 
     private void stopPlayer() {
         nowPlaying = null;
+        nowPlayingId = null;
         if (booster != null) {
             try { booster.release(); } catch (Exception ignored) { }
             booster = null;
@@ -537,6 +701,7 @@ public class DuaaService extends Service {
     }
 
     private void stopEverything() {
+        queue.clear();
         handler.removeCallbacks(playRunnable);
         handler.removeCallbacks(waitForBluetoothAudio);
         stopPlayer();

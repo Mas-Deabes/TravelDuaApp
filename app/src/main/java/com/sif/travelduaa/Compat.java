@@ -115,4 +115,33 @@ public class Compat {
     public static String notificationPermission() {
         return android.Manifest.permission.POST_NOTIFICATIONS;
     }
+
+    /** PendingIntent.FLAG_MUTABLE (Android 12+): needed so the installer can add its result. */
+    public static int mutableFlag() {
+        return Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0;
+    }
+
+    /** For the home screen widget: starts the service when tapped. */
+    public static PendingIntent servicePendingIntent(Context c, Intent i) {
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT
+                | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        return Build.VERSION.SDK_INT >= 26
+                ? PendingIntent.getForegroundService(c, 1, i, flags)
+                : PendingIntent.getService(c, 1, i, flags);
+    }
+
+    /** Android 8+: the user must allow this app to install updates ("Install unknown apps"). */
+    public static boolean canInstallUpdates(Context c) {
+        return Build.VERSION.SDK_INT < 26 || c.getPackageManager().canRequestPackageInstalls();
+    }
+
+    public static Intent installPermissionIntent(Context c) {
+        return new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                android.net.Uri.parse("package:" + c.getPackageName()));
+    }
+
+    public static boolean needsPermission(Context c, String permission) {
+        return Build.VERSION.SDK_INT >= 23
+                && c.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
 }

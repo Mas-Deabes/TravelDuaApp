@@ -43,6 +43,30 @@ public class Prefs {
     public static final String SETUP_STEP = "setup_step";          // so setup resumes after a car restart
     public static final String TEST_SINCE = "test_since";          // final setup test started at
 
+    // Language and display
+    public static final String LANGUAGE = "language";              // "en" (default) or "ar"
+    public static final String SHOW_TRANSLIT = "show_translit";
+    public static final String SHOW_MEANING = "show_meaning";
+    public static final String FOLLOW_ALONG = "follow_along";      // highlight the phrase being recited
+
+    // When to play
+    public static final String FREQUENCY_H = "frequency_h";        // 0 = every start, -1 = once a day, N = every N hours
+    public static final String QUIET_ON = "quiet_on";
+    public static final String QUIET_FROM = "quiet_from";          // hour 0–23
+    public static final String QUIET_TO = "quiet_to";
+    public static final String QUIET_SKIP = "quiet_skip";          // true = don't play, false = play quietly
+    public static final String PAUSE_MUSIC = "pause_music";        // pause other audio instead of lowering it
+
+    // Extra duaas
+    public static final String RETURN_ON = "return_on";            // phone: return duaa when leaving the car
+    public static final String CONNECTED_AT = "connected_at";      // phone: when the car connected
+    public static final String DHIKR_ON = "dhikr_on";              // morning / evening dhikr after the travel duaa
+    public static final String DHIKR_DONE = "dhikr_done";          // e.g. "2026-11-07-am"
+
+    // Updates
+    public static final String UPDATE_CHECKED = "update_checked";
+    public static final String UPDATE_AVAILABLE = "update_available"; // build number, 0 = none
+
     // Phone settings
     public static final String CARS = "cars";                      // set of "MAC|Name"
     private static final String OLD_CAR_ADDRESS = "car_address";   // from the first version

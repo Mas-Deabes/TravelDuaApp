@@ -14,15 +14,19 @@ android {
         // Each GitHub build gets a higher number, so a new APK installs over the old one.
         versionCode = Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
         versionName = "1.0." + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+        // e.g. "sif/TravelDuaApp": lets the app check this repo's Releases for updates.
+        resValue "string", "github_repo", (System.getenv('GITHUB_REPOSITORY') ?: '')
     }
 
     signingConfigs {
         release {
             // Same key every build, so updates install without uninstalling first.
-            storeFile file('release.keystore')
-            storePassword 'travelduaa'
-            keyAlias 'duaa'
-            keyPassword 'travelduaa'
+            // On GitHub the key can come from secrets (safe for a public repo);
+            // otherwise the release.keystore file in the repo is used.
+            storeFile file(System.getenv('KEYSTORE_FILE') ?: 'release.keystore')
+            storePassword System.getenv('KEYSTORE_PASSWORD') ?: 'travelduaa'
+            keyAlias System.getenv('KEY_ALIAS') ?: 'duaa'
+            keyPassword System.getenv('KEY_PASSWORD') ?: 'travelduaa'
         }
     }
 

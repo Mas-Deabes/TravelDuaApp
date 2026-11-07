@@ -140,7 +140,7 @@ public class Ui {
 
     public TextView text(String s, float size, int color) {
         TextView t = new TextView(c);
-        t.setText(s);
+        t.setText(Lang.tr(s));
         t.setTextSize(size);
         t.setTextColor(color);
         t.setLineSpacing(0, 1.15f);
@@ -157,7 +157,7 @@ public class Ui {
 
     /** Small grey heading at the top of a card. */
     public TextView label(String s) {
-        TextView t = bold(s.toUpperCase(), 13, MUTED);
+        TextView t = bold(Lang.isArabic() ? Lang.tr(s) : s.toUpperCase(), 13, MUTED);
         t.setLetterSpacing(0.12f);
         t.setPadding(0, 0, 0, dp(10));
         return t;

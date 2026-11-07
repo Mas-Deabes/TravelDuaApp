@@ -14,6 +14,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Head unit: lets the app open CPLink / CarPlay (or another app) after the duaa -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- In-app updates from GitHub Releases -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Record your own voice -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Needed on Android 11+ to list installed apps for "After the duaa, open" -->
     <queries>
@@ -46,6 +51,19 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Waits for the car head unit to wake from sleep so it can play a short audio prayer" />
         </service>
+
+        <!-- In-app updates: Android reports the install result here -->
+        <receiver android:name=".Updater$InstallResult" android:exported="false" />
+
+        <!-- Home screen widget (phone): tap to play -->
+        <receiver android:name=".DuaWidget" android:exported="true" android:label="Travel Duaa">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
 
         <!-- Head unit mode: optional "Extra reliability" helper (user turns it on in Accessibility) -->
         <service

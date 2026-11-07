@@ -41,6 +41,9 @@ import java.util.Set;
 public class MainActivity extends Activity {
     private static final int PICK_AUDIO = 1;
     private static final int ASK_PERMISSIONS = 2;
+    private static final int SAVE_BACKUP = 3;
+    private static final int OPEN_BACKUP = 4;
+    private static final int ASK_MICROPHONE = 5;
 
     private Ui ui;
     private ScrollView scroll;          // the main column (left column on wide screens)
@@ -61,6 +64,13 @@ public class MainActivity extends Activity {
     private TextView nowPlayingText;    // banner text while the duaa plays
     private View nowPlayingBanner;
     private boolean lastTestPassed;
+    // Follow along: the Arabic text views on screen, by duaa id, and the phrase being recited
+    private final Map<String, TextView> followViews = new java.util.HashMap<>();
+    private TextView nowPhraseText;
+    private String lastFollowKey = "";
+    private Duas.Dua pendingRecordDua;   // waiting for microphone permission
+    private Updater.Release latestRelease;
+    private String updateStatus = "";
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     /** Updates the event log on screen once a second, so tests show up live. */
@@ -68,8 +78,9 @@ public class MainActivity extends Activity {
         @Override public void run() {
             updateLog();
             updateNowPlaying();
+            updateFollowAlong();
             if (setupStep == SETUP_TEST && testPassed() != lastTestPassed) buildUi();
-            handler.postDelayed(this, 1000);
+            handler.postDelayed(this, DuaaService.nowPlaying != null ? 300 : 1000);
         }
     };
 
@@ -81,6 +92,7 @@ public class MainActivity extends Activity {
             if (light != 0) setTheme(light);
         }
         super.onCreate(savedInstanceState);
+        Lang.load(this);
         ui = new Ui(this);
         // e.g. after switching light / dark on the Settings screen, stay on Settings
         if (savedInstanceState != null) page = savedInstanceState.getInt("page", PAGE_MAIN);
@@ -122,6 +134,9 @@ public class MainActivity extends Activity {
             setContentView(withBottomBar(scroll));
         }
         colourSystemBars();
+        // Arabic: the whole layout reads right to left
+        getWindow().getDecorView().setLayoutDirection(
+                Lang.isArabic() ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
 
         // First run: show the guided setup. Existing installs skip it (it can be re-run from Settings).
         SharedPreferences p = Prefs.get(this);
@@ -180,6 +195,12 @@ public class MainActivity extends Activity {
         handler.post(liveLog);
         // Coming back from Android settings: refresh permission / helper status.
         if (Prefs.isHeadUnit(this)) buildUi();
+        // Once a day, quietly check GitHub for a newer build.
+        long checked = Prefs.get(this).getLong(Prefs.UPDATE_CHECKED, 0);
+        if (setupStep < 0 && !Updater.repo(this).isEmpty()
+                && System.currentTimeMillis() - checked > 24 * 3_600_000L) {
+            checkForUpdate(false);
+        }
     }
 
     @Override
@@ -197,6 +218,9 @@ public class MainActivity extends Activity {
         logCardView = null;
         nowPlayingBanner = null;
         nowPlayingText = null;
+        nowPhraseText = null;
+        followViews.clear();
+        lastFollowKey = "";
         bottomBar.removeAllViews();
         bottomBar.setVisibility(View.GONE);
         if (setupStep >= 0) {
@@ -335,6 +359,8 @@ public class MainActivity extends Activity {
     private void buildMain() {
         content.addView(header(true));
         content.addView(nowPlayingBanner());
+        View update = updateBanner();
+        if (update != null) content.addView(update);
         View checklist = checklistCard();
         if (checklist != null) content.addView(checklist);
         content.addView(duaCard());
@@ -358,10 +384,15 @@ public class MainActivity extends Activity {
         content.addView(pageHeader("Settings"));
         content.addView(installedOnCard());
         content.addView(hu ? headUnitSettingsCard() : phoneSettingsCard());
+        content.addView(playbackCard());
+        content.addView(extraDuasCard());
         LinearLayout right = wide ? detail : content;
         if (wide) right.addView(ui.space(64));   // line up with the left column below the title
+        right.addView(displayCard());
         if (hu) right.addView(reliabilityCard());
         right.addView(appearanceCard());
+        right.addView(backupCard());
+        right.addView(updatesCard());
         right.addView(footer());
     }
 
@@ -372,6 +403,9 @@ public class MainActivity extends Activity {
                 15, Ui.MUTED);
         hint.setPadding(ui.dp(4), 0, ui.dp(4), ui.dp(12));
         content.addView(hint);
+        LinearLayout share = ui.buttonRow(ui.button("📤  Share log", Ui.SECONDARY, v -> shareLog()));
+        share.setPadding(0, 0, 0, ui.dp(12));
+        content.addView(share);
         logCardView = logCard();
         content.addView(logCardView);
     }
@@ -418,13 +452,314 @@ public class MainActivity extends Activity {
         boolean phone = Prefs.isPhone(this);
         r.addView(ui.bold(phone ? "📱  Phone" : "🚗  Head unit", 18, Ui.TEXT), ui.weight(1));
         r.addView(ui.button("Change", Ui.SECONDARY, v -> dialog()
-                .setTitle("Change where the app is installed?")
-                .setMessage("Opens the setup at that step. Your duaa and recordings are kept.")
-                .setPositiveButton("Change", (d, w) -> { page = PAGE_MAIN; startSetup(SETUP_WHERE); })
-                .setNegativeButton("Cancel", null)
+                .setTitle(Lang.tr("Change where the app is installed?"))
+                .setMessage(Lang.tr("Opens the setup at that step. Your duaa and recordings are kept."))
+                .setPositiveButton(Lang.tr("Change"), (d, w) -> { page = PAGE_MAIN; startSetup(SETUP_WHERE); })
+                .setNegativeButton(Lang.tr("Cancel"), null)
                 .show()));
         card.addView(r);
         return card;
+    }
+
+    // =====================================================================
+    // Settings sections added with the new features
+    // =====================================================================
+
+    /** How often, quiet hours, and what happens to other audio. */
+    private View playbackCard() {
+        SharedPreferences p = Prefs.get(this);
+        LinearLayout card = ui.card("Playing");
+
+        // How often
+        int freq = p.getInt(Prefs.FREQUENCY_H, 0);
+        String freqText = freq == 0 ? "Every time the car starts"
+                : freq == -1 ? "Once a day (first trip)" : Lang.f("At most every %1$d hours", freq);
+        LinearLayout r = ui.row();
+        LinearLayout t = ui.vertical();
+        t.addView(ui.text("How often", 17, Ui.TEXT));
+        t.addView(ui.text(Lang.tr(freqText), 14, Ui.ACCENT));
+        r.addView(t, ui.weight(1));
+        r.addView(ui.button("Change", Ui.SECONDARY, v -> {
+            String[] labels = {Lang.tr("Every time the car starts"), Lang.tr("Once a day (first trip)"),
+                    Lang.f("At most every %1$d hours", 2), Lang.f("At most every %1$d hours", 4),
+                    Lang.f("At most every %1$d hours", 6)};
+            int[] values = {0, -1, 2, 4, 6};
+            dialog().setTitle(Lang.tr("How often")).setItems(labels, (d, w) -> {
+                p.edit().putInt(Prefs.FREQUENCY_H, values[w]).apply();
+                buildUi();
+            }).show();
+        }));
+        card.addView(r);
+        card.addView(ui.divider());
+
+        // Quiet hours
+        boolean quiet = p.getBoolean(Prefs.QUIET_ON, false);
+        card.addView(ui.switchRow("Quiet hours", "Late at night, play more quietly or not at all.", quiet,
+                (b, on) -> { p.edit().putBoolean(Prefs.QUIET_ON, on).apply(); buildUi(); }));
+        if (quiet) {
+            card.addView(hourStepper("From", Prefs.QUIET_FROM, 23));
+            card.addView(hourStepper("To", Prefs.QUIET_TO, 6));
+            boolean skip = p.getBoolean(Prefs.QUIET_SKIP, false);
+            card.addView(ui.buttonRow(
+                    ui.button((skip ? "" : "✓ ") + Lang.tr("Play quietly"), skip ? Ui.SECONDARY : Ui.PRIMARY,
+                            v -> { p.edit().putBoolean(Prefs.QUIET_SKIP, false).apply(); buildUi(); }),
+                    ui.button((skip ? "✓ " : "") + Lang.tr("Don't play"), skip ? Ui.PRIMARY : Ui.SECONDARY,
+                            v -> { p.edit().putBoolean(Prefs.QUIET_SKIP, true).apply(); buildUi(); })));
+        }
+        card.addView(ui.divider());
+
+        // Other audio
+        boolean pause = p.getBoolean(Prefs.PAUSE_MUSIC, false);
+        card.addView(ui.text("Music or radio during the duaa", 17, Ui.TEXT));
+        card.addView(ui.text("Most players resume by themselves afterwards.", 14, Ui.MUTED));
+        card.addView(ui.buttonRow(
+                ui.button((pause ? "" : "✓ ") + Lang.tr("Lower it"), pause ? Ui.SECONDARY : Ui.PRIMARY,
+                        v -> { p.edit().putBoolean(Prefs.PAUSE_MUSIC, false).apply(); buildUi(); }),
+                ui.button((pause ? "✓ " : "") + Lang.tr("Pause it"), pause ? Ui.PRIMARY : Ui.SECONDARY,
+                        v -> { p.edit().putBoolean(Prefs.PAUSE_MUSIC, true).apply(); buildUi(); })));
+        return card;
+    }
+
+    /** "From   [−] 23:00 [+]" for quiet hours. */
+    private View hourStepper(String title, String key, int def) {
+        LinearLayout r = ui.row();
+        r.setPadding(0, ui.dp(2), 0, ui.dp(2));
+        r.addView(ui.text(title, 16, Ui.TEXT), ui.weight(1));
+        TextView value = ui.bold(String.format(java.util.Locale.ROOT, "%02d:00",
+                Prefs.get(this).getInt(key, def)), 18, Ui.TEXT);
+        value.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        value.setMinWidth(ui.dp(72));
+        TextView minus = ui.button("−", Ui.SECONDARY, v -> value.setText(changeHour(key, def, -1)));
+        TextView plus = ui.button("+", Ui.SECONDARY, v -> value.setText(changeHour(key, def, 1)));
+        minus.setMinWidth(ui.dp(52));
+        plus.setMinWidth(ui.dp(52));
+        r.addView(minus);
+        r.addView(value);
+        r.addView(plus);
+        return r;
+    }
+
+    private String changeHour(String key, int def, int by) {
+        int h = ((Prefs.get(this).getInt(key, def) + by) % 24 + 24) % 24;
+        Prefs.get(this).edit().putInt(key, h).apply();
+        return String.format(java.util.Locale.ROOT, "%02d:00", h);
+    }
+
+    /** Morning / evening dhikr, and (phone) the return duaa. */
+    private View extraDuasCard() {
+        SharedPreferences p = Prefs.get(this);
+        LinearLayout card = ui.card("More duaas");
+
+        boolean dhikr = p.getBoolean(Prefs.DHIKR_ON, false);
+        card.addView(ui.switchRow("Morning & evening dhikr",
+                "Plays after the travel duaa: once in the morning (3:00–12:00) and once in the evening (15:00–24:00).",
+                dhikr, (b, on) -> { p.edit().putBoolean(Prefs.DHIKR_ON, on).apply(); buildUi(); }));
+        if (dhikr) extraDuaSection(card, Duas.DHIKR);
+        card.addView(ui.divider());
+
+        if (Prefs.isPhone(this)) {
+            boolean ret = p.getBoolean(Prefs.RETURN_ON, false);
+            card.addView(ui.switchRow("Return duaa when you arrive",
+                    "Plays on your phone when it disconnects from the car after a trip of 2 minutes or more.",
+                    ret, (b, on) -> { p.edit().putBoolean(Prefs.RETURN_ON, on).apply(); buildUi(); }));
+            if (ret) extraDuaSection(card, Duas.RETURN);
+        } else {
+            card.addView(ui.text("Return duaa when you arrive", 17, Ui.TEXT));
+            card.addView(ui.text("Only in phone mode: the head unit switches off with the car, so it can't "
+                    + "play when you arrive.", 14, Ui.MUTED));
+        }
+        return card;
+    }
+
+    /** A duaa's text and audio list, inside a settings card. */
+    private void extraDuaSection(LinearLayout card, Duas.Dua d) {
+        LinearLayout box = ui.vertical();
+        box.setBackground(ui.rounded(Ui.CARD_2, 14, Ui.STROKE, 1));
+        box.setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(12));
+        LinearLayout.LayoutParams lp = ui.matchWidth();
+        lp.topMargin = ui.dp(6);
+        lp.bottomMargin = ui.dp(6);
+        box.setLayoutParams(lp);
+        box.addView(ui.text(sourceLine(d), 14, Ui.MUTED));
+        addDuaDetails(box, d, Duas.audioFor(this, d), false);
+        card.addView(box);
+    }
+
+    /** Language, transliteration, meaning, follow along. */
+    private View displayCard() {
+        SharedPreferences p = Prefs.get(this);
+        LinearLayout card = ui.card("Language and text");
+        card.addView(languageChoices());
+        card.addView(ui.divider());
+        card.addView(ui.switchRow("Show transliteration", "The Arabic in Latin letters, to recite along.",
+                p.getBoolean(Prefs.SHOW_TRANSLIT, true),
+                (b, on) -> p.edit().putBoolean(Prefs.SHOW_TRANSLIT, on).apply()));
+        card.addView(ui.switchRow("Show the English meaning", null,
+                p.getBoolean(Prefs.SHOW_MEANING, true),
+                (b, on) -> p.edit().putBoolean(Prefs.SHOW_MEANING, on).apply()));
+        card.addView(ui.switchRow("Follow along",
+                "While it plays, the phrase being recited is highlighted. It's timed from the "
+                        + "recording's length, so it's approximate.",
+                p.getBoolean(Prefs.FOLLOW_ALONG, true),
+                (b, on) -> p.edit().putBoolean(Prefs.FOLLOW_ALONG, on).apply()));
+        return card;
+    }
+
+    /** English / العربية. Changing it redraws the screen. */
+    private View languageChoices() {
+        boolean ar = Lang.isArabic();
+        return ui.buttonRow(
+                ui.button((ar ? "" : "✓ ") + "🇬🇧  English", ar ? Ui.SECONDARY : Ui.PRIMARY, v -> setLanguage("en")),
+                ui.button((ar ? "✓ " : "") + "🇪🇬  العربية", ar ? Ui.PRIMARY : Ui.SECONDARY, v -> setLanguage("ar")));
+    }
+
+    private void setLanguage(String code) {
+        if (code.equals(Prefs.get(this).getString(Prefs.LANGUAGE, "en"))) return;
+        Prefs.get(this).edit().putString(Prefs.LANGUAGE, code).apply();
+        recreate();
+    }
+
+    /** Backup and restore of settings and recordings. */
+    private View backupCard() {
+        LinearLayout card = ui.card("Backup and restore");
+        card.addView(ui.text("Saves your settings and the recordings you added to one file. Restore it on "
+                + "a new phone or head unit.", 14, Ui.MUTED));
+        card.addView(ui.buttonRow(
+                ui.button("💾  Back up", Ui.SECONDARY, v -> {
+                    Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("application/zip");
+                    i.putExtra(Intent.EXTRA_TITLE, "travel-duaa-backup.zip");
+                    try { startActivityForResult(i, SAVE_BACKUP); } catch (Exception e) { toast("No file picker found"); }
+                }),
+                ui.button("📂  Restore", Ui.SECONDARY, v -> {
+                    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("*/*");
+                    try { startActivityForResult(i, OPEN_BACKUP); } catch (Exception e) { toast("No file picker found"); }
+                })));
+        return card;
+    }
+
+    /** In-app updates from GitHub Releases. */
+    private View updatesCard() {
+        LinearLayout card = ui.card("Updates");
+        card.addView(ui.text(Lang.f("This version: build %1$d", Updater.currentBuild(this)), 16, Ui.TEXT));
+        int available = Prefs.get(this).getInt(Prefs.UPDATE_AVAILABLE, 0);
+        if (available > Updater.currentBuild(this)) {
+            card.addView(ui.bold(Lang.f("Update available: build %1$d", available), 16, Ui.ACCENT));
+        }
+        if (!updateStatus.isEmpty()) card.addView(ui.text(updateStatus, 14, Ui.MUTED));
+        card.addView(ui.buttonRow(
+                ui.button("Check for updates", Ui.SECONDARY, v -> checkForUpdate(true)),
+                ui.button("Download & install", available > Updater.currentBuild(this) ? Ui.PRIMARY : Ui.SECONDARY,
+                        v -> installUpdate())));
+        return card;
+    }
+
+    /** Main screen: shown when GitHub has a newer build. */
+    private View updateBanner() {
+        int available = Prefs.get(this).getInt(Prefs.UPDATE_AVAILABLE, 0);
+        if (available <= Updater.currentBuild(this)) return null;
+        LinearLayout b = ui.row();
+        b.setBackground(ui.rounded(Ui.CARD, 16, Ui.ACCENT, 1.5f));
+        b.setPadding(ui.dp(18), ui.dp(10), ui.dp(10), ui.dp(10));
+        LinearLayout.LayoutParams lp = ui.matchWidth();
+        lp.bottomMargin = ui.dp(14);
+        b.setLayoutParams(lp);
+        b.addView(ui.bold(Lang.f("⬆  Update available (build %1$d)", available), 16, Ui.ACCENT), ui.weight(1));
+        b.addView(ui.button("Install", Ui.PRIMARY, v -> installUpdate()));
+        return b;
+    }
+
+    /** Checks GitHub. quiet = automatic daily check (no messages unless there's an update). */
+    private void checkForUpdate(boolean showResult) {
+        if (showResult) {
+            updateStatus = Lang.tr("Checking…");
+            buildUi();
+        }
+        Updater.check(this, (release, error) -> {
+            latestRelease = release;
+            if (release != null) {
+                updateStatus = release.build > Updater.currentBuild(this)
+                        ? Lang.f("Build %1$d is ready to install.", release.build)
+                        : Lang.tr("You have the latest version.");
+            } else {
+                updateStatus = Lang.tr(error);
+            }
+            if (showResult || (release != null && release.build > Updater.currentBuild(this))) buildUi();
+        });
+    }
+
+    private void installUpdate() {
+        if (!Compat.canInstallUpdates(this)) {
+            dialog().setTitle(Lang.tr("Allow installing updates"))
+                    .setMessage(Lang.tr("Android needs your permission for Travel Duaa to install its own updates. "
+                            + "Turn on \"Allow from this source\", then come back and tap Install again."))
+                    .setPositiveButton(Lang.tr("Open settings"), (d, w) -> {
+                        try { startActivity(Compat.installPermissionIntent(this)); } catch (Exception ignored) { }
+                    })
+                    .setNegativeButton(Lang.tr("Cancel"), null).show();
+            return;
+        }
+        if (latestRelease == null || latestRelease.build <= Updater.currentBuild(this)) {
+            // Need the download link first.
+            updateStatus = Lang.tr("Checking…");
+            buildUi();
+            Updater.check(this, (release, error) -> {
+                latestRelease = release;
+                if (release != null && release.build > Updater.currentBuild(this)) {
+                    installUpdate();
+                } else {
+                    updateStatus = release == null ? Lang.tr(error) : Lang.tr("You have the latest version.");
+                    buildUi();
+                }
+            });
+            return;
+        }
+        updateStatus = Lang.f("Downloading… %1$d%%", 0);
+        buildUi();
+        Updater.downloadAndInstall(this, latestRelease,
+                pct -> {
+                    updateStatus = Lang.f("Downloading… %1$d%%", pct);
+                    if (page == PAGE_SETTINGS && pct % 10 == 0) buildUi();
+                },
+                (r, error) -> {
+                    updateStatus = error == null ? Lang.tr("Android will now ask you to install the update.")
+                            : error;
+                    buildUi();
+                });
+    }
+
+    /** Sends the event log (plus device details) by WhatsApp, email, etc. */
+    private void shareLog() {
+        String info = "Travel Duaa build " + Updater.currentBuild(this)
+                + "\nDevice: " + Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.HARDWARE + ")"
+                + "\nAndroid " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"
+                + "\nMode: " + Prefs.mode(this)
+                + "\nHelper on: " + helperEnabled()
+                + "\n\n" + Prefs.get(this).getString(Prefs.LOG, "(empty)");
+        Intent i = new Intent(Intent.ACTION_SEND);
+        i.setType("text/plain");
+        i.putExtra(Intent.EXTRA_SUBJECT, "Travel Duaa event log");
+        i.putExtra(Intent.EXTRA_TEXT, info);
+        try {
+            startActivity(Intent.createChooser(i, Lang.tr("Share log")));
+        } catch (Exception e) {
+            toast("No app to share with");
+        }
+    }
+
+    /** Phone mode: a different duaa for one car. */
+    private void chooseCarDua(String address, String name) {
+        String[] labels = new String[Duas.ALL.length + 1];
+        labels[0] = Lang.tr("Same as the main choice");
+        for (int i = 0; i < Duas.ALL.length; i++) labels[i + 1] = Duas.ALL[i].displayTitle();
+        dialog().setTitle(Lang.f("Duaa for %1$s", name)).setItems(labels, (d, w) -> {
+            Duas.setDuaForCar(this, address, w == 0 ? null : Duas.ALL[w - 1]);
+            Prefs.log(this, "Duaa for " + name + ": " + (w == 0 ? "main choice" : Duas.ALL[w - 1].title));
+            buildUi();
+        }).show();
     }
 
     // =====================================================================
@@ -479,7 +814,7 @@ public class MainActivity extends Activity {
         // Progress: "Step 3 of 6" and dots
         LinearLayout prog = ui.row();
         prog.setPadding(ui.dp(4), 0, ui.dp(4), ui.dp(10));
-        prog.addView(ui.bold("Step " + setupStep + " of " + SETUP_STEPS, 14, Ui.MUTED), ui.weight(1));
+        prog.addView(ui.bold(Lang.f("Step %1$d of %2$d", setupStep, SETUP_STEPS), 14, Ui.MUTED), ui.weight(1));
         for (int i = 1; i <= SETUP_STEPS; i++) {
             TextView dot = ui.text(i <= setupStep ? "●" : "○", 14, i <= setupStep ? Ui.ACCENT : Ui.MUTED);
             dot.setPadding(ui.dp(3), 0, ui.dp(3), 0);
@@ -489,9 +824,12 @@ public class MainActivity extends Activity {
 
         switch (setupStep) {
             case SETUP_THEME:
-                setupTitle("Light or dark?", "Dark is easiest on the eyes in the car at night. "
-                        + "You can change this later in Settings → Appearance.");
-                LinearLayout tc = ui.card(null);
+                setupTitle("Language and appearance", "Dark is easiest on the eyes in the car at night. "
+                        + "You can change both later in Settings.");
+                LinearLayout lc = ui.card("Language");
+                lc.addView(languageChoices());
+                content.addView(lc);
+                LinearLayout tc = ui.card("Appearance");
                 tc.addView(themeChoices());
                 content.addView(tc);
                 setupNav(SETUP_WELCOME, "Next", v -> goStep(SETUP_WHERE), true);
@@ -630,7 +968,7 @@ public class MainActivity extends Activity {
         int mins = Prefs.get(this).getInt(Prefs.HU_MIN_SLEEP_MIN, 1);
         String[] steps = hu ? new String[]{
                 "Tap \"Start the test\" below.",
-                "Turn the car off, and wait " + (mins == 0 ? "about 15 seconds" : "at least " + mins + " min") + ".",
+                Lang.f("Turn the car off, and wait %1$s.", mins == 0 ? Lang.tr("about 15 seconds") : Lang.f("at least %1$d min", mins)),
                 "Turn the car back on. The duaa should play by itself.",
                 "Open Travel Duaa again. This screen shows the result."
         } : new String[]{
@@ -687,8 +1025,8 @@ public class MainActivity extends Activity {
     // ---------- Setup: done ----------
 
     private void buildSetupDone(boolean hu) {
-        setupTitle("You're all set  🤲", "Travel Duaa will play by itself"
-                + (hu ? " when the car starts." : " when your phone connects to your car."));
+        setupTitle("You're all set  🤲", hu ? "Travel Duaa will play by itself when the car starts."
+                : "Travel Duaa will play by itself when your phone connects to your car.");
         SharedPreferences p = Prefs.get(this);
         Duas.Dua d = Duas.selectedDua(this);
         Duas.Recording audio = Duas.audioFor(this, d);
@@ -696,7 +1034,7 @@ public class MainActivity extends Activity {
 
         LinearLayout card = ui.card("Summary");
         summaryRow(card, "Installed on", hu ? "🚗 Head unit" : "📱 Phone");
-        summaryRow(card, "Duaa", d.title);
+        summaryRow(card, "Duaa", d.displayTitle());
         summaryRow(card, "Audio", audio == null ? "None yet"
                 : audio.name + " (" + Duas.volume(this, audio) + "%)");
         if (hu) {
@@ -705,7 +1043,7 @@ public class MainActivity extends Activity {
                     + (p.getBoolean(Prefs.HU_SCREEN_WAKE, true) ? "waking from sleep" : "");
             summaryRow(card, "Plays on", when.isEmpty() ? "Nothing (turned off)" : when);
             String after = p.getString(Prefs.AFTER_APP_NAME, "");
-            summaryRow(card, "After the duaa", after.isEmpty() ? "Nothing" : "Open " + after);
+            summaryRow(card, "After the duaa", after.isEmpty() ? "Nothing" : Lang.f("Open %1$s", after));
             summaryRow(card, "Extra reliability", helperEnabled() ? "On" : "Off");
         } else {
             int cars = Prefs.cars(this).size();
@@ -737,25 +1075,100 @@ public class MainActivity extends Activity {
     // ---------- Now playing banner ----------
 
     private View nowPlayingBanner() {
-        LinearLayout b = ui.row();
+        LinearLayout b = ui.vertical();
         b.setBackground(ui.rounded(Ui.ACCENT, 16, 0, 0));
-        b.setPadding(ui.dp(18), ui.dp(10), ui.dp(10), ui.dp(10));
+        b.setPadding(ui.dp(18), ui.dp(10), ui.dp(10), ui.dp(12));
         LinearLayout.LayoutParams lp = ui.matchWidth();
         lp.bottomMargin = ui.dp(14);
         b.setLayoutParams(lp);
+        LinearLayout top = ui.row();
         nowPlayingText = ui.bold("", 18, 0xFFFFFFFF);
-        b.addView(nowPlayingText, ui.weight(1));
+        top.addView(nowPlayingText, ui.weight(1));
         TextView stop = ui.button("■  Stop", Ui.SECONDARY, v -> sendToService(DuaaService.ACTION_STOP));
-        b.addView(stop);
+        top.addView(stop);
+        b.addView(top);
+        // Follow along: the phrase being recited, large
+        nowPhraseText = ui.arabic("", 24);
+        nowPhraseText.setTextColor(0xFFFFFFFF);
+        nowPhraseText.setPadding(ui.dp(4), ui.dp(6), ui.dp(8), 0);
+        nowPhraseText.setVisibility(View.GONE);
+        b.addView(nowPhraseText, ui.matchWidth());
         nowPlayingBanner = b;
         return b;
+    }
+
+    /**
+     * Follow along: highlights the phrase being recited. The audio has no timing marks,
+     * so the position is estimated from how far into the recording it is and the phrase lengths.
+     */
+    private void updateFollowAlong() {
+        String id = DuaaService.nowPlayingId;
+        boolean on = Prefs.get(this).getBoolean(Prefs.FOLLOW_ALONG, true);
+        Duas.Dua d = id == null ? null : Duas.byId(id);
+        if (!on || d == null || d.text.isEmpty()) {
+            if (!lastFollowKey.isEmpty()) {
+                // Playback ended: put the plain text back.
+                for (Map.Entry<String, TextView> e : followViews.entrySet()) {
+                    e.getValue().setText(Duas.byId(e.getKey()).text);
+                }
+                lastFollowKey = "";
+            }
+            if (nowPhraseText != null) nowPhraseText.setVisibility(View.GONE);
+            return;
+        }
+        String[] phrases = phrases(d.text);
+        long elapsed = android.os.SystemClock.uptimeMillis() - DuaaService.playStartedAt;
+        double progress = Math.max(0, Math.min(0.999, elapsed / (double) DuaaService.playDurationMs));
+        int total = 0;
+        for (String ph : phrases) total += ph.length();
+        int idx = 0, start = 0, acc = 0;
+        for (int i = 0; i < phrases.length; i++) {
+            if (progress * total < acc + phrases[i].length()) { idx = i; start = acc; break; }
+            acc += phrases[i].length();
+            idx = i;
+            start = acc - phrases[i].length();
+        }
+        String key = id + ":" + idx;
+        if (key.equals(lastFollowKey)) return;
+        lastFollowKey = key;
+
+        TextView tv = followViews.get(id);
+        if (tv != null) {
+            android.text.SpannableString sp = new android.text.SpannableString(d.text);
+            int end = Math.min(d.text.length(), start + phrases[idx].length());
+            sp.setSpan(new android.text.style.ForegroundColorSpan(Ui.GOLD), start, end, 0);
+            sp.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), start, end, 0);
+            tv.setText(sp);
+        }
+        if (nowPhraseText != null) {
+            nowPhraseText.setText(phrases[idx].trim());
+            nowPhraseText.setVisibility(View.VISIBLE);
+        }
+    }
+
+    /** Splits the Arabic into phrases after each comma (،) or full stop, keeping the punctuation. */
+    private static String[] phrases(String text) {
+        List<String> out = new ArrayList<>();
+        int from = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch == '،' || ch == '.' || i == text.length() - 1) {
+                int end = i + 1;
+                while (end < text.length() && text.charAt(end) == ' ') end++;
+                out.add(text.substring(from, end));
+                from = end;
+                i = end - 1;
+            }
+        }
+        if (out.isEmpty()) out.add(text);
+        return out.toArray(new String[0]);
     }
 
     private void updateNowPlaying() {
         if (nowPlayingBanner == null) return;
         String title = DuaaService.nowPlaying;
         nowPlayingBanner.setVisibility(title == null ? View.GONE : View.VISIBLE);
-        if (title != null) nowPlayingText.setText("▶  Now playing: " + title);
+        if (title != null) nowPlayingText.setText(Lang.f("▶  Now playing: %1$s", title));
     }
 
     // ---------- Setup checklist ----------
@@ -767,7 +1180,7 @@ public class MainActivity extends Activity {
         Duas.Dua d = Duas.selectedDua(this);
 
         if (Duas.audioFor(this, d) == null) {
-            items.add(checkItem("No audio chosen for \"" + d.title + "\"", "Add audio", v -> pickFile(d)));
+            items.add(checkItem(Lang.f("No audio chosen for \"%1$s\"", d.displayTitle()), "Add audio", v -> pickFile(d)));
         }
         if (!p.getBoolean(Prefs.ENABLED, true)) {
             items.add(checkItem("Automatic playing is turned off", "Turn on", v -> {
@@ -810,7 +1223,7 @@ public class MainActivity extends Activity {
     private View checkItem(String text, String action, View.OnClickListener l) {
         LinearLayout r = ui.row();
         r.setPadding(0, ui.dp(4), 0, ui.dp(4));
-        r.addView(ui.text("⚠  " + text, 16, Ui.TEXT), ui.weight(1));
+        r.addView(ui.text("⚠  " + Lang.tr(text), 16, Ui.TEXT), ui.weight(1));
         r.addView(ui.button(action, Ui.PRIMARY, l));
         return r;
     }
@@ -933,7 +1346,7 @@ public class MainActivity extends Activity {
         top.addView(dot);
 
         LinearLayout titles = ui.vertical();
-        titles.addView(ui.bold(d.title, 17, Ui.TEXT));
+        titles.addView(ui.bold(d.displayTitle(), 17, Ui.TEXT));
         titles.addView(ui.text(sourceLine(d), 14, Ui.MUTED));
         top.addView(titles, ui.weight(1));
 
@@ -964,7 +1377,7 @@ public class MainActivity extends Activity {
 
         LinearLayout top = ui.row();
         LinearLayout titles = ui.vertical();
-        titles.addView(ui.bold(d.title, 22, Ui.TEXT));
+        titles.addView(ui.bold(d.displayTitle(), 22, Ui.TEXT));
         titles.addView(ui.text(sourceLine(d), 15, Ui.MUTED));
         top.addView(titles, ui.weight(1));
         top.addView(ui.chip(audio != null ? "🎵 Ready" : "No audio chosen", audio != null ? Ui.ACCENT : Ui.WARN));
@@ -976,6 +1389,7 @@ public class MainActivity extends Activity {
 
     /** Arabic text, English meaning, the audio list, and the Add / Play / Stop buttons. */
     private void addDuaDetails(LinearLayout box, Duas.Dua d, Duas.Recording audio, boolean big) {
+        SharedPreferences p = Prefs.get(this);
         if (!d.text.isEmpty()) {
             TextView ar = ui.arabic(d.text, big ? 24 : 21);
             ar.setBackground(ui.rounded(Ui.BG, 12, 0, 0));
@@ -984,33 +1398,136 @@ public class MainActivity extends Activity {
             alp.topMargin = ui.dp(12);
             alp.bottomMargin = ui.dp(6);
             box.addView(ar, alp);
+            followViews.put(d.id, ar);   // highlighted phrase by phrase while it plays
 
-            // English meaning, underneath the Arabic
-            TextView meaningLabel = ui.label("Meaning");
-            meaningLabel.setPadding(0, ui.dp(8), 0, ui.dp(4));
-            box.addView(meaningLabel);
-            TextView en = ui.text(d.meaning, big ? 17 : 16, Ui.TEXT);
-            en.setLineSpacing(ui.dp(3), 1.1f);
-            box.addView(en);
+            // The Arabic in Latin letters
+            if (p.getBoolean(Prefs.SHOW_TRANSLIT, true) && !d.translit.isEmpty()) {
+                TextView tl = ui.label("Transliteration");
+                tl.setPadding(0, ui.dp(8), 0, ui.dp(4));
+                box.addView(tl);
+                TextView t = ui.text(d.translit, big ? 17 : 16, Ui.TEXT);
+                t.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.ITALIC));
+                englishParagraph(t);
+                box.addView(t);
+            }
+            // English meaning
+            if (p.getBoolean(Prefs.SHOW_MEANING, true)) {
+                TextView meaningLabel = ui.label("Meaning");
+                meaningLabel.setPadding(0, ui.dp(8), 0, ui.dp(4));
+                box.addView(meaningLabel);
+                TextView en = ui.text(d.meaning, big ? 17 : 16, Ui.TEXT);
+                englishParagraph(en);
+                box.addView(en);
+            }
         }
+        addAudioSection(box, d, audio);
+    }
 
-        // The list of audios for this duaa. Tap one to use it.
+    /** English text keeps reading left to right, even when the app is in Arabic. */
+    private void englishParagraph(TextView t) {
+        t.setLineSpacing(ui.dp(3), 1.1f);
+        t.setTextDirection(View.TEXT_DIRECTION_LTR);
+        t.setTextAlignment(View.TEXT_ALIGNMENT_TEXT_START);
+    }
+
+    /** The audio list for a duaa, with Add / Record / Play / Stop. */
+    private void addAudioSection(LinearLayout box, Duas.Dua d, Duas.Recording audio) {
         TextView label = ui.label("Audio");
         label.setPadding(0, ui.dp(12), 0, ui.dp(6));
         box.addView(label);
 
         List<Duas.Recording> recs = Duas.recordingsFor(this, d);
         if (recs.isEmpty()) {
-            box.addView(ui.text("No audio for this duaa yet. Tap \"＋ Add audio\" to add one.", 15, Ui.WARN));
+            box.addView(ui.text("No audio for this duaa yet. Add a file or record your own voice.", 15, Ui.WARN));
         }
         for (Duas.Recording r : recs) {
             box.addView(audioRow(d, r, audio != null && r.key.equals(audio.key)));
         }
-
         box.addView(ui.buttonRow(
                 ui.button("＋  Add audio", Ui.SECONDARY, v -> pickFile(d)),
-                ui.button("▶  Play", Ui.PRIMARY, v -> sendToService(DuaaService.ACTION_PLAY_NOW)),
+                ui.button("🎙  Record", Ui.SECONDARY, v -> recordVoice(d))));
+        box.addView(ui.buttonRow(
+                ui.button("▶  Play", Ui.PRIMARY, v -> playDua(d)),
                 ui.button("■  Stop", Ui.SECONDARY, v -> sendToService(DuaaService.ACTION_STOP))));
+    }
+
+    private void playDua(Duas.Dua d) {
+        Intent i = new Intent(this, DuaaService.class);
+        i.setAction(DuaaService.ACTION_PLAY_DUA);
+        i.putExtra(DuaaService.EXTRA_DUA, d.id);
+        Compat.startService(this, i);
+    }
+
+    // ---------- Record your own voice ----------
+
+    private void recordVoice(Duas.Dua d) {
+        if (Compat.needsPermission(this, android.Manifest.permission.RECORD_AUDIO)) {
+            pendingRecordDua = d;
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, ASK_MICROPHONE);
+            return;
+        }
+        File out = Duas.newUserFile(this, d);
+        android.media.MediaRecorder rec = new android.media.MediaRecorder();
+        try {
+            rec.setAudioSource(android.media.MediaRecorder.AudioSource.MIC);
+            rec.setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4);
+            rec.setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC);
+            rec.setAudioEncodingBitRate(128_000);
+            rec.setAudioSamplingRate(44_100);
+            rec.setOutputFile(out.getAbsolutePath());
+            rec.prepare();
+            rec.start();
+        } catch (Exception e) {
+            rec.release();
+            toast("Couldn't start recording: " + e.getMessage());
+            return;
+        }
+        long started = System.currentTimeMillis();
+        TextView timer = ui.bold("● 0:00", 32, 0xFFE5484D);
+        timer.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        timer.setPadding(0, ui.dp(16), 0, ui.dp(8));
+        Runnable tick = new Runnable() {
+            @Override public void run() {
+                long sec = (System.currentTimeMillis() - started) / 1000;
+                timer.setText(String.format(java.util.Locale.ROOT, "● %d:%02d", sec / 60, sec % 60));
+                handler.postDelayed(this, 500);
+            }
+        };
+        handler.post(tick);
+        LinearLayout body = ui.vertical();
+        body.setPadding(ui.dp(24), ui.dp(8), ui.dp(24), ui.dp(8));
+        body.addView(timer, ui.matchWidth());
+        body.addView(ui.text(Lang.f("Recording \"%1$s\". Recite it clearly, then tap Save.", d.displayTitle()),
+                15, Ui.MUTED));
+        dialog()
+                .setTitle(Lang.tr("Record your voice"))
+                .setView(body)
+                .setCancelable(false)
+                .setPositiveButton(Lang.tr("Save"), (dlg, w) -> {
+                    handler.removeCallbacks(tick);
+                    try { rec.stop(); } catch (Exception ignored) { }
+                    rec.release();
+                    if (out.length() == 0) {
+                        toast("Nothing was recorded");
+                        //noinspection ResultOfMethodCallIgnored
+                        out.delete();
+                        return;
+                    }
+                    String when = new java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.UK)
+                            .format(new java.util.Date());
+                    Duas.saveUserName(this, out, Lang.tr("My voice") + " · " + when);
+                    Prefs.log(this, "Recorded own voice for " + d.title);
+                    toast("Saved to the audio list");
+                    buildUi();
+                })
+                .setNegativeButton(Lang.tr("Cancel"), (dlg, w) -> {
+                    handler.removeCallbacks(tick);
+                    try { rec.stop(); } catch (Exception ignored) { }
+                    rec.release();
+                    //noinspection ResultOfMethodCallIgnored
+                    out.delete();
+                })
+                .show();
     }
 
     /**
@@ -1018,6 +1535,8 @@ public class MainActivity extends Activity {
      * direction marks, so mixing English and Arabic on one line doesn't shuffle the order.
      */
     private String sourceLine(Duas.Dua d) {
+        // In Arabic, the Arabic title is the main title, so the English one goes here instead.
+        if (Lang.isArabic()) return Lang.tr(d.source) + "  ·  \u2066" + d.title + "\u2069";
         return d.source + "  ·  \u2067" + d.titleAr + "\u2069";
     }
 
@@ -1040,21 +1559,21 @@ public class MainActivity extends Activity {
         row.addView(dot);
 
         LinearLayout texts = ui.vertical();
-        texts.addView(chosen ? ui.bold(r.name, 16, Ui.TEXT) : ui.text(r.name, 16, Ui.TEXT));
-        texts.addView(ui.text((r.isBuiltIn() ? "Built into the app" : "Added by you")
-                + (chosen ? "  ·  plays when the car starts" : ""), 13, chosen ? Ui.ACCENT : Ui.MUTED));
+        texts.addView(chosen ? ui.bold(r.displayName(), 16, Ui.TEXT) : ui.text(r.displayName(), 16, Ui.TEXT));
+        texts.addView(ui.text(Lang.tr(r.isBuiltIn() ? "Built into the app" : "Added by you")
+                + (chosen ? "  ·  " + Lang.tr("plays when the car starts") : ""), 13, chosen ? Ui.ACCENT : Ui.MUTED));
         row.addView(texts, ui.weight(1));
 
         if (!r.isBuiltIn()) {
             row.addView(ui.button("✕", Ui.PLAIN, v -> dialog()
-                    .setTitle("Remove \"" + r.name + "\"?")
-                    .setMessage("It's deleted from this device. Your other audios stay.")
-                    .setPositiveButton("Remove", (dlg, w) -> {
+                    .setTitle(Lang.f("Remove \"%1$s\"?", r.name))
+                    .setMessage(Lang.tr("It's deleted from this device. Your other audios stay."))
+                    .setPositiveButton(Lang.tr("Remove"), (dlg, w) -> {
                         Duas.delete(this, r);
                         Prefs.log(this, "Removed audio: " + r.name);
                         buildUi();
                     })
-                    .setNegativeButton("Cancel", null)
+                    .setNegativeButton(Lang.tr("Cancel"), null)
                     .show()));
         }
         if (!chosen) {
@@ -1170,12 +1689,12 @@ public class MainActivity extends Activity {
         afterRow.addView(ui.button("Choose", Ui.SECONDARY, v -> chooseAfterApp()));
         card.addView(afterRow);
         if (!afterName.isEmpty()) {
-            card.addView(ui.text("Tip: turn off " + afterName + "'s own auto-start, so it doesn't open "
-                    + "before the duaa has finished.", 14, Ui.MUTED));
+            card.addView(ui.text(Lang.f("Tip: turn off %1$s's own auto-start, so it doesn't open before the duaa has finished.",
+                    afterName), 14, Ui.MUTED));
         }
         card.addView(ui.switchRow("Show Travel Duaa while the duaa plays",
-                "Brings the app to the front during the duaa (e.g. over CPLink)"
-                        + (afterName.isEmpty() ? "." : ", then opens " + afterName + "."),
+                afterName.isEmpty() ? Lang.tr("Brings the app to the front during the duaa (e.g. over CPLink).")
+                        : Lang.f("Brings the app to the front during the duaa, then opens %1$s.", afterName),
                 p.getBoolean(Prefs.HU_SHOW_WHILE_PLAYING, false),
                 (b, on) -> {
                     p.edit().putBoolean(Prefs.HU_SHOW_WHILE_PLAYING, on).apply();
@@ -1274,7 +1793,7 @@ public class MainActivity extends Activity {
         for (int i = 0; i < apps.size(); i++) labels[i + 1] = apps.get(i)[0];
 
         dialog()
-                .setTitle("After the duaa, open…")
+                .setTitle(Lang.tr("After the duaa, open…"))
                 .setItems(labels, (d, which) -> {
                     SharedPreferences.Editor e = Prefs.get(this).edit();
                     if (which == 0) {
@@ -1288,7 +1807,7 @@ public class MainActivity extends Activity {
                     }
                     buildUi();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(Lang.tr("Cancel"), null)
                 .show();
     }
 
@@ -1299,11 +1818,11 @@ public class MainActivity extends Activity {
 
     private void askOverlayPermission() {
         dialog()
-                .setTitle("Allow \"Display over other apps\"")
-                .setMessage("Android needs this so Travel Duaa can open apps (itself, or e.g. CPLink) "
+                .setTitle(Lang.tr("Allow \"Display over other apps\""))
+                .setMessage(Lang.tr("Android needs this so Travel Duaa can open apps (itself, or e.g. CPLink) "
                         + "while the car starts. "
-                        + "On the next screen, turn it on for Travel Duaa, then come back.")
-                .setPositiveButton("Open settings", (d, w) -> {
+                        + "On the next screen, turn it on for Travel Duaa, then come back."))
+                .setPositiveButton(Lang.tr("Open settings"), (d, w) -> {
                     try {
                         startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                                 Uri.parse("package:" + getPackageName())));
@@ -1312,7 +1831,7 @@ public class MainActivity extends Activity {
                                 Uri.parse("package:" + getPackageName())));
                     }
                 })
-                .setNegativeButton("Later", null)
+                .setNegativeButton(Lang.tr("Later"), null)
                 .show();
     }
 
@@ -1437,7 +1956,7 @@ public class MainActivity extends Activity {
         try {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) { }
-        TextView t = ui.text("Version " + version, 13, Ui.MUTED);
+        TextView t = ui.text(Lang.f("Version %1$s", version), 13, Ui.MUTED);
         t.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         t.setPadding(0, ui.dp(8), 0, 0);
         return t;
@@ -1469,6 +1988,28 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if ((requestCode == SAVE_BACKUP || requestCode == OPEN_BACKUP) && resultCode == RESULT_OK
+                && data != null && data.getData() != null) {
+            try {
+                if (requestCode == SAVE_BACKUP) {
+                    try (OutputStream os = getContentResolver().openOutputStream(data.getData())) {
+                        int n = Backup.write(this, os);
+                        Prefs.log(this, "Backup saved (" + n + " recordings)");
+                        toast(Lang.f("Backup saved (%1$d recordings)", n));
+                    }
+                } else {
+                    try (InputStream is = getContentResolver().openInputStream(data.getData())) {
+                        int n = Backup.read(this, is);
+                        Prefs.log(this, "Backup restored (" + n + " recordings)");
+                        toast(Lang.f("Restored (%1$d recordings)", n));
+                        recreate();
+                    }
+                }
+            } catch (Exception e) {
+                toast(e.getMessage());
+            }
+            return;
+        }
         if (requestCode != PICK_AUDIO || resultCode != RESULT_OK || data == null) return;
         Duas.Dua d = Duas.byId(Prefs.get(this).getString(Prefs.PENDING_PICK, Duas.CUSTOM));
         File dest = Duas.newUserFile(this, d);
@@ -1518,8 +2059,11 @@ public class MainActivity extends Activity {
         r.addView(icon);
         LinearLayout texts = ui.vertical();
         texts.addView(ui.bold(name, 17, Ui.TEXT));
-        texts.addView(ui.text(address, 12, Ui.MUTED));
+        Duas.Dua own = Duas.duaForCar(this, address);
+        texts.addView(ui.text(own == null ? Lang.tr("Duaa: same as the main choice")
+                : Lang.f("Duaa: %1$s", own.displayTitle()), 13, own == null ? Ui.MUTED : Ui.ACCENT));
         r.addView(texts, ui.weight(1));
+        r.addView(ui.button("Duaa", Ui.SECONDARY, v -> chooseCarDua(address, name)));
         r.addView(ui.button("Remove", Ui.PLAIN, v -> {
             Map<String, String> cars = Prefs.cars(this);
             cars.remove(address);
@@ -1570,14 +2114,14 @@ public class MainActivity extends Activity {
         devices.addAll(other);
         if (devices.isEmpty()) {
             dialog()
-                    .setTitle("No devices to add")
+                    .setTitle(Lang.tr("No devices to add"))
                     .setMessage(already.isEmpty()
                             ? "Pair your phone with the car in Bluetooth settings first, then come back."
                             : "All paired devices are already added. To add another car, pair it in "
                             + "Bluetooth settings first.")
-                    .setPositiveButton("Open Bluetooth settings",
+                    .setPositiveButton(Lang.tr("Open Bluetooth settings"),
                             (d, w) -> startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
-                    .setNegativeButton("Close", null)
+                    .setNegativeButton(Lang.tr("Close"), null)
                     .show();
             return;
         }
@@ -1590,9 +2134,9 @@ public class MainActivity extends Activity {
         }
 
         dialog()
-                .setTitle("Tick your car(s)")
+                .setTitle(Lang.tr("Tick your car(s)"))
                 .setMultiChoiceItems(labels, ticked, (d, which, isChecked) -> ticked[which] = isChecked)
-                .setPositiveButton("Add", (d, w) -> {
+                .setPositiveButton(Lang.tr("Add"), (d, w) -> {
                     Map<String, String> cars = Prefs.cars(this);
                     int added = 0;
                     for (int i = 0; i < devices.size(); i++) {
@@ -1607,10 +2151,24 @@ public class MainActivity extends Activity {
                     if (added == 0) toast("Nothing ticked");
                     buildUi();
                 })
-                .setNeutralButton("Pair a new one", (d, w) ->
+                .setNeutralButton(Lang.tr("Pair a new one"), (d, w) ->
                         startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)))
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(Lang.tr("Cancel"), null)
                 .show();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        boolean granted = results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (requestCode == ASK_MICROPHONE && granted && pendingRecordDua != null) {
+            Duas.Dua d = pendingRecordDua;
+            pendingRecordDua = null;
+            recordVoice(d);
+        } else if (requestCode == ASK_MICROPHONE) {
+            toast("Permission not allowed");
+        }
+        buildUi();
     }
 
     private void askPermissions() {
@@ -1632,5 +2190,5 @@ public class MainActivity extends Activity {
         Compat.startService(this, i);
     }
 
-    private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
+    private void toast(String s) { Toast.makeText(this, Lang.tr(s), Toast.LENGTH_SHORT).show(); }
 }
