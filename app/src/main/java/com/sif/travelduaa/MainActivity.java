@@ -18,6 +18,7 @@ import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -170,6 +171,17 @@ public class MainActivity extends Activity {
         h.setPadding(ui.dp(4), 0, ui.dp(4), ui.dp(18));
 
         LinearLayout top = ui.row();
+
+        // The app's logo (its launcher icon), with rounded corners
+        ImageView logo = new ImageView(this);
+        logo.setImageDrawable(getApplicationInfo().loadIcon(getPackageManager()));
+        logo.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        logo.setBackground(ui.rounded(Ui.CARD, 16, 0, 0));
+        logo.setClipToOutline(true);
+        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(ui.dp(64), ui.dp(64));
+        logoLp.rightMargin = ui.dp(14);
+        top.addView(logo, logoLp);
+
         LinearLayout titles = ui.vertical();
         titles.addView(ui.bold("Travel Duaa", 30, Ui.TEXT));
         titles.addView(ui.text("دعاء السفر", 20, Ui.GOLD));

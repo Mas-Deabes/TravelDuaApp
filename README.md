@@ -1,4 +1,8 @@
-# Travel Duaa · دعاء السفر
+<p align="center">
+  <img src="docs/logo.png" alt="Travel Duaa logo" width="180">
+</p>
+
+<h1 align="center">Travel Duaa · دعاء السفر</h1>
 
 An Android app that plays the travel duaa automatically when you start the car.
 
@@ -64,7 +68,7 @@ The **Choose the duaa** section lists four options:
 
 **Adding an audio never replaces anything.** It's added to the bottom of the list, and the one you were using stays selected until you tap a different one. The only exception is a duaa's first audio, which is used automatically.
 
-Each duaa keeps its own list and its own choice. Cards show **🎵 Ready** when they have an audio and **No audio** when they don't.
+Each duaa keeps its own list and its own choice. Cards show **🎵 Ready** when they have an audio and **No audio chosen** when they don't.
 
 There are two ways to add an audio.
 
