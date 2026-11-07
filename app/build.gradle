@@ -18,22 +18,27 @@ android {
         resValue "string", "github_repo", (System.getenv('GITHUB_REPOSITORY') ?: '')
     }
 
+    // Signing key: on GitHub it comes from the repo's secrets (KEYSTORE_BASE64 etc.), so it's never
+    // in the code. Builds on your PC without the key are signed with Android Studio's debug key:
+    // fine for testing, but they can't update a version installed from GitHub.
+    def keystorePath = System.getenv('KEYSTORE_FILE')
+    def haveKey = keystorePath != null && file(keystorePath).exists()
+
     signingConfigs {
-        release {
-            // Same key every build, so updates install without uninstalling first.
-            // On GitHub the key can come from secrets (safe for a public repo);
-            // otherwise the release.keystore file in the repo is used.
-            storeFile file(System.getenv('KEYSTORE_FILE') ?: 'release.keystore')
-            storePassword System.getenv('KEYSTORE_PASSWORD') ?: 'travelduaa'
-            keyAlias System.getenv('KEY_ALIAS') ?: 'duaa'
-            keyPassword System.getenv('KEY_PASSWORD') ?: 'travelduaa'
+        if (haveKey) {
+            release {
+                storeFile file(keystorePath)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS') ?: 'duaa'
+                keyPassword System.getenv('KEY_PASSWORD') ?: System.getenv('KEYSTORE_PASSWORD')
+            }
         }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            signingConfig haveKey ? signingConfigs.release : signingConfigs.debug
         }
     }
 

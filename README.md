@@ -157,23 +157,7 @@ To offer several reciters for one duaa, add `_name` to the end: `duaa_full_misha
 
 The app checks this repo's **Releases** once a day and shows **Update available** with an **Install** button. Android then asks you to confirm.
 
-**Needs a public repo.** GitHub doesn't let apps read the releases of a private repo. Before making the repo public, move the signing key out of the repo into GitHub secrets:
-
-1. On your PC, in the project folder (Git Bash):
-   ```bash
-   base64 -w 0 app/release.keystore > keystore.txt
-   ```
-2. On GitHub: **Settings → Secrets and variables → Actions → New repository secret**, and add:
-   | Name | Value |
-   |---|---|
-   | `KEYSTORE_BASE64` | the contents of `keystore.txt` |
-   | `KEYSTORE_PASSWORD` | `travelduaa` |
-   | `KEY_ALIAS` | `duaa` |
-   | `KEY_PASSWORD` | `travelduaa` |
-3. Delete `app/release.keystore` and `keystore.txt` from the repo (keep a copy of the keystore somewhere safe, e.g. a USB stick). Commit and push.
-4. **Settings → General → Change visibility → Public.**
-
-The build uses the secret when it's there, so every APK is still signed with the same key and installs over the old one. The first time, Android asks you to allow **Install unknown apps** for Travel Duaa.
+**Needs a public repo**, because GitHub doesn't let apps read the releases of a private repo. That's safe because the signing key isn't in the repo: the build gets it from GitHub secrets. The first time, Android asks you to allow **Install unknown apps** for Travel Duaa.
 
 **Renaming the repo** (e.g. to `TravelDuaApp`) is fine: the app reads the repo name from GitHub at build time, so the next build checks the new name.
 
@@ -324,9 +308,27 @@ Requirements: Android Studio (or JDK 17 + Android SDK 35). The app runs on Andro
 | `Compat.java` | Calls that differ between Android versions |
 | `Prefs.java` | Saved settings, the cars list and the event log |
 | `.github/workflows/build.yml` | The GitHub build that publishes the APK to Releases |
+| `tools/make-signing-key.bat` | Makes a new signing key and copies it for the GitHub secret |
 
 ---
 
 ## Signing key
 
-Every build is signed with the same key, so updates install over the old version. By default it's `app/release.keystore` in the repo; anyone with that file can sign apps as you, so keep the repo **private** — or move the key into GitHub secrets (see **In-app updates** above) and then make the repo public.
+Android only installs an update if it's signed with the **same key** as the installed app. The key is kept **out of the repo**: GitHub gets it from the repo's secrets when it builds.
+
+### Setting it up (once)
+
+1. **Make the key.** Double-click `tools/make-signing-key.bat` (Windows, needs Android Studio). It asks for a password, saves the key in `Documents\TravelDuaa-signing-key\`, and copies it as text to your clipboard.
+   **Back up that folder and the password.** Without them you can't release updates.
+2. **Add the secrets.** On GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
+   | Name | Value |
+   |---|---|
+   | `KEYSTORE_BASE64` | paste (the text from step 1; also in `KEYSTORE_BASE64.txt`) |
+   | `KEYSTORE_PASSWORD` | the password you chose |
+3. **Push.** In the Actions log, the step *Get the signing key from secrets* should say *Using the signing key from secrets*.
+
+If the secret is missing, the build **stops on purpose** instead of publishing an APK that couldn't update the app.
+
+Never commit a key: `.gitignore` already blocks `*.keystore`, `*.jks` and `keystore.txt`.
+
+**Builds in Android Studio** on your PC are signed with Android Studio's own debug key. They're fine for testing (▶ Run), but can't update a copy installed from GitHub; uninstall that copy first.

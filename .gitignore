@@ -5,3 +5,8 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+
+# Signing keys must never be committed (the GitHub build gets the key from secrets)
+*.keystore
+*.jks
+keystore.txt

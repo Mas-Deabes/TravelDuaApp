@@ -49,7 +49,6 @@ public class MainActivity extends Activity {
     private ScrollView scroll;          // the main column (left column on wide screens)
     private LinearLayout content;
     private ScrollView detailScroll;    // right column on wide screens, else null
-    private LinearLayout rootRow;       // wide screens: holds both columns
     private LinearLayout bottomBar;     // setup: Back / Next, always visible at the bottom
     private LinearLayout detail;
     private boolean wide;               // landscape screen wide enough for two columns
@@ -114,7 +113,6 @@ public class MainActivity extends Activity {
             root.setGravity(Gravity.TOP);
             root.setBackgroundColor(Ui.BG);
             root.setPadding(ui.dp(12), 0, ui.dp(12), 0);
-            rootRow = root;
             content.setPadding(ui.dp(8), ui.dp(18), ui.dp(8), ui.dp(24));
 
             detailScroll = new ScrollView(this);
@@ -1236,6 +1234,7 @@ public class MainActivity extends Activity {
 
     private void openBatterySettings() {
         try {
+            if (Build.VERSION.SDK_INT < 23) throw new IllegalStateException("no battery settings screen");
             startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
             toast("Find Travel Duaa and choose \"Don't optimise\" / \"Unrestricted\"");
         } catch (Exception e) {
@@ -1461,7 +1460,8 @@ public class MainActivity extends Activity {
     // ---------- Record your own voice ----------
 
     private void recordVoice(Duas.Dua d) {
-        if (Compat.needsPermission(this, android.Manifest.permission.RECORD_AUDIO)) {
+        if (Build.VERSION.SDK_INT >= 23
+                && Compat.needsPermission(this, android.Manifest.permission.RECORD_AUDIO)) {
             pendingRecordDua = d;
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, ASK_MICROPHONE);
             return;
@@ -1824,6 +1824,7 @@ public class MainActivity extends Activity {
                         + "On the next screen, turn it on for Travel Duaa, then come back."))
                 .setPositiveButton(Lang.tr("Open settings"), (d, w) -> {
                     try {
+                        if (Build.VERSION.SDK_INT < 23) throw new IllegalStateException("not needed");
                         startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                                 Uri.parse("package:" + getPackageName())));
                     } catch (Exception ex) {
@@ -2010,7 +2011,7 @@ public class MainActivity extends Activity {
             }
             return;
         }
-        if (requestCode != PICK_AUDIO || resultCode != RESULT_OK || data == null) return;
+        if (requestCode != PICK_AUDIO || resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Duas.Dua d = Duas.byId(Prefs.get(this).getString(Prefs.PENDING_PICK, Duas.CUSTOM));
         File dest = Duas.newUserFile(this, d);
         // Copy the file into the app so it still works if the USB / SD card is removed.
