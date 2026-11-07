@@ -18,6 +18,10 @@ public class BootReceiver extends BroadcastReceiver {
             service.setAction(DuaaService.ACTION_HU_WATCH);
         } else {
             service.setAction(DuaaService.ACTION_HU_STARTED);
+            // A real boot, as opposed to an ignition / quick-boot (waking from sleep) signal.
+            boolean fullBoot = Intent.ACTION_BOOT_COMPLETED.equals(action)
+                    || "android.intent.action.LOCKED_BOOT_COMPLETED".equals(action);
+            service.putExtra(DuaaService.EXTRA_FULL_BOOT, fullBoot);
         }
         Compat.startService(context, service);
     }

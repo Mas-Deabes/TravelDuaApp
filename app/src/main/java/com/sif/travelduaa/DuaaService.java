@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 
 import java.io.FileInputStream;
 
@@ -40,6 +41,10 @@ public class DuaaService extends Service {
     public static final String ACTION_STOP = "com.sif.travelduaa.STOP";
     /** Test button: runs the real start-up steps, but ignores "already played" and the on/off switch. */
     public static final String ACTION_TEST = "com.sif.travelduaa.TEST";
+    public static final String EXTRA_FULL_BOOT = "full_boot";
+
+    /** How often the app checks whether the head unit has been asleep. */
+    private static final long HEARTBEAT_MS = 5_000;
 
     /** Ignition broadcasts from different head unit makers. */
     private static final String[] ACC_ON_ACTIONS = {
@@ -70,10 +75,17 @@ public class DuaaService extends Service {
     private PowerManager.WakeLock wakeLock;
     private boolean watchingHeadUnit = false;
     private long waitStartedAt = 0;
+    // Sleep detection: while the unit sleeps, uptime stops but real time keeps going.
+    private long lastSleepTotal = 0;   // elapsedRealtime - uptimeMillis at the last check
+    private long lastBeatWall = 0;     // clock time at the last check
+    private long lastSavedAlive = 0;
+    /** True when the next play() is an automatic start (or the Test button), not "Play". */
+    private boolean nextIsStartUp = false;
 
     private final AudioManager.OnAudioFocusChangeListener focusListener = change -> { };
     private final Runnable playRunnable = this::play;
     private final Runnable waitForBluetoothAudio = this::checkBluetoothAudio;
+    private final Runnable heartbeat = this::checkForSleep;
 
     /** Head unit: screen on/off and ACC ON while the app is already running. */
     private final BroadcastReceiver headUnitReceiver = new BroadcastReceiver() {
@@ -94,18 +106,18 @@ public class DuaaService extends Service {
                 long needed = Prefs.get(context).getInt(Prefs.HU_MIN_SLEEP_MIN, 1) * 60_000L;
                 Prefs.log(context, "Screen on (was off " + duration(offFor) + ")");
                 if (!useScreen) {
-                    Prefs.log(context, "Not playing: screen-wake option is off");
+                    Prefs.log(context, "Not playing: \"wakes from sleep\" is turned off");
                 } else if (offFor < needed) {
-                    Prefs.log(context, "Not playing: screen was off less than " + (needed / 60000) + " min");
+                    Prefs.log(context, "Not playing: off for less than " + (needed / 60000) + " min");
                 } else {
-                    headUnitStarted();
+                    wokeUp();
                 }
             } else if (isAccOff(a)) {
                 Prefs.log(context, "Car off signal: " + a);
                 stopPlayer();
             } else {
                 Prefs.log(context, "Received: " + a);
-                headUnitStarted();
+                wokeUp();
             }
         }
     };
@@ -115,6 +127,7 @@ public class DuaaService extends Service {
         super.onCreate();
         running = true;
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (Prefs.isHeadUnit(this)) Prefs.log(this, "Background service started");
     }
 
     @Override
@@ -127,19 +140,33 @@ public class DuaaService extends Service {
                 headUnit ? "Ready to play when the car starts" : "Waiting for car audio"),
                 !headUnit);
 
+        boolean firstStart = !watchingHeadUnit;
         if (headUnit) {
             startWatchingHeadUnit();
         }
 
         if (action == null) {
             // Restarted by Android after being killed.
-            if (!headUnit) stopEverything();
-            return headUnit ? START_STICKY : START_NOT_STICKY;
+            if (!headUnit) {
+                stopEverything();
+                return START_NOT_STICKY;
+            }
+            // If the app was gone for a long time, the car was most likely off: treat as waking up.
+            if (firstStart) checkTimeAway("App restarted");
+            return START_STICKY;
         }
 
         switch (action) {
             case ACTION_HU_STARTED:
-                headUnitStarted();
+                if (intent.getBooleanExtra(EXTRA_FULL_BOOT, false)) {
+                    if (Prefs.get(this).getBoolean(Prefs.HU_ON_BOOT, true)) {
+                        headUnitStarted();
+                    } else {
+                        Prefs.log(this, "Not playing: \"full start-up\" is turned off");
+                    }
+                } else {
+                    wokeUp();
+                }
                 break;
             case ACTION_HU_WATCH:
                 break;
@@ -155,6 +182,7 @@ public class DuaaService extends Service {
                 break;
             case ACTION_PLAY_NOW:
                 handler.removeCallbacks(playRunnable);
+                nextIsStartUp = false;
                 play();
                 break;
             case ACTION_TEST:
@@ -175,6 +203,64 @@ public class DuaaService extends Service {
         for (String a : ACC_ON_ACTIONS) f.addAction(a);
         for (String a : ACC_OFF_ACTIONS) f.addAction(a);
         Compat.registerExported(this, headUnitReceiver, f);
+
+        // Start checking for sleep.
+        lastSleepTotal = SystemClock.elapsedRealtime() - SystemClock.uptimeMillis();
+        lastBeatWall = System.currentTimeMillis();
+        handler.postDelayed(heartbeat, HEARTBEAT_MS);
+    }
+
+    /**
+     * Runs every few seconds. Two ways to tell the unit was asleep:
+     *  1. uptime (which stops during sleep) fell behind real elapsed time
+     *  2. this check itself didn't run for a long time (the app was frozen)
+     * Works even on units that send no screen or ignition signal.
+     */
+    private void checkForSleep() {
+        long sleepTotal = SystemClock.elapsedRealtime() - SystemClock.uptimeMillis();
+        long slept = sleepTotal - lastSleepTotal;
+        lastSleepTotal = sleepTotal;
+
+        long now = System.currentTimeMillis();
+        long gap = now - lastBeatWall - HEARTBEAT_MS;
+        lastBeatWall = now;
+
+        long away = Math.max(slept, gap);
+        if (away >= 10_000) {
+            Prefs.log(this, "Head unit was asleep for " + duration(away));
+            long needed = Prefs.get(this).getInt(Prefs.HU_MIN_SLEEP_MIN, 1) * 60_000L;
+            if (away >= needed) {
+                wokeUp();
+            } else {
+                Prefs.log(this, "Not playing: off for less than " + (needed / 60000) + " min");
+            }
+        }
+
+        // Remember we were running, in case the app gets closed while the unit sleeps.
+        if (now - lastSavedAlive > 30_000 || now < lastSavedAlive) {
+            Prefs.get(this).edit().putLong(Prefs.LAST_ALIVE, now).apply();
+            lastSavedAlive = now;
+        }
+        handler.postDelayed(heartbeat, HEARTBEAT_MS);
+    }
+
+    /** After a restart: if the app hadn't run for a while, the car was probably off. */
+    private void checkTimeAway(String reason) {
+        long last = Prefs.get(this).getLong(Prefs.LAST_ALIVE, 0);
+        if (last == 0) return;
+        long away = System.currentTimeMillis() - last;
+        long needed = Prefs.get(this).getInt(Prefs.HU_MIN_SLEEP_MIN, 1) * 60_000L;
+        Prefs.log(this, reason + ", last running " + duration(away) + " ago");
+        if (away >= needed) wokeUp();
+    }
+
+    /** The unit woke from sleep (car turned back on). */
+    private void wokeUp() {
+        if (!Prefs.get(this).getBoolean(Prefs.HU_SCREEN_WAKE, true)) {
+            Prefs.log(this, "Not playing: \"wakes from sleep\" is turned off");
+            return;
+        }
+        headUnitStarted();
     }
 
     private void headUnitStarted() {
@@ -190,6 +276,7 @@ public class DuaaService extends Service {
         markPlayed();
         int delay = p.getInt(Prefs.HU_DELAY, 5);
         handler.removeCallbacks(playRunnable);
+        nextIsStartUp = true;
         handler.postDelayed(playRunnable, delay * 1000L);
         Prefs.log(this, "Will play in " + delay + " s");
     }
@@ -203,6 +290,7 @@ public class DuaaService extends Service {
         if (headUnit) {
             int delay = Prefs.get(this).getInt(Prefs.HU_DELAY, 5);
             Prefs.log(this, "TEST: pretending the car just started. Playing in " + delay + " s");
+            nextIsStartUp = true;
             handler.postDelayed(playRunnable, delay * 1000L);
         } else {
             int delay = Prefs.get(this).getInt(Prefs.PHONE_DELAY, 2);
@@ -266,10 +354,13 @@ public class DuaaService extends Service {
     // ---------- Playback ----------
 
     private void play() {
+        final boolean startUp = nextIsStartUp;
+        nextIsStartUp = false;
         Duas.Dua dua = Duas.selectedDua(this);
         Duas.Recording rec = Duas.audioFor(this, dua);
         if (rec == null) {
             Prefs.log(this, "No audio for \"" + dua.title + "\". Choose or add one in the app.");
+            if (startUp) openAfterApp();
             if (!Prefs.isHeadUnit(this)) stopEverything();
             return;
         }
@@ -289,6 +380,8 @@ public class DuaaService extends Service {
             player.prepare();
             player.setOnCompletionListener(mp -> {
                 stopPlayer();
+                Prefs.log(this, "Duaa finished");
+                if (startUp) openAfterApp();
                 if (!Prefs.isHeadUnit(this)) stopEverything();
             });
             // Ask the radio / music app to go quieter while the duaa plays.
@@ -300,7 +393,29 @@ public class DuaaService extends Service {
         } catch (Exception e) {
             Prefs.log(this, "Playback error: " + e.getMessage());
             stopPlayer();
+            if (startUp) openAfterApp();
             if (!Prefs.isHeadUnit(this)) stopEverything();
+        }
+    }
+
+    /** Head unit: opens the app chosen under "After the duaa, open" (e.g. CPLink / CarPlay). */
+    private void openAfterApp() {
+        if (!Prefs.isHeadUnit(this)) return;
+        String pkg = Prefs.get(this).getString(Prefs.AFTER_APP, "");
+        if (pkg.isEmpty()) return;
+        String name = Prefs.get(this).getString(Prefs.AFTER_APP_NAME, pkg);
+        try {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (launch == null) {
+                Prefs.log(this, "Can't open " + name + ": it's no longer installed");
+                return;
+            }
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+            startActivity(launch);
+            Prefs.log(this, "Opened " + name);
+        } catch (Exception e) {
+            Prefs.log(this, "Couldn't open " + name + ": " + e.getClass().getSimpleName()
+                    + ". Allow \"Display over other apps\" for Travel Duaa.");
         }
     }
 
@@ -360,6 +475,7 @@ public class DuaaService extends Service {
         }
         handler.removeCallbacks(playRunnable);
         handler.removeCallbacks(waitForBluetoothAudio);
+        handler.removeCallbacks(heartbeat);
         stopPlayer();
         super.onDestroy();
     }

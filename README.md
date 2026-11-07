@@ -18,6 +18,7 @@ It runs either on **your phone** (plays through the car speakers over Bluetooth)
 - **Several cars**: in phone mode, choose which Bluetooth devices count as your car(s). Headphones and speakers are ignored.
 - **Test button** that runs the real start-up steps, so you can check it without driving.
 - **Event log** showing what happened at each start-up, for troubleshooting.
+- **Open an app after the duaa** (head unit), e.g. CPLink for CarPlay, so it starts once the duaa has finished.
 - **Dark design** that's easy to read in the car at night, with large buttons.
 
 ---
@@ -27,12 +28,12 @@ It runs either on **your phone** (plays through the car speakers over Bluetooth)
 | | 📱 Phone | 🚗 Head unit |
 |---|---|---|
 | **Install it on** | Your phone | An Android car head unit (FYT, Topway, MTK and similar Chinese units) |
-| **When it plays** | When the phone connects to one of your cars by Bluetooth | When the unit boots, when the ignition (ACC) comes on, or when the screen wakes after being off for a while (1 min by default, adjustable) |
+| **When it plays** | When the phone connects to one of your cars by Bluetooth | After a full start-up, and/or when the unit wakes from sleep. You choose which in Settings. |
 | **How it plays** | Waits until the car's Bluetooth audio is ready (up to 30 s), then plays through the car speakers | Waits a few seconds for the speakers to wake, then plays |
 | **Bluetooth needed** | Yes | No |
 | **Won't repeat within** | 10 minutes (e.g. if Bluetooth drops and reconnects) | 3 minutes (ignition and screen-on signals arrive together) |
 
-**Why the head unit mode listens for several signals:** most Chinese head units don't fully shut down when you turn the car off. They go to sleep and wake up when you start the car, so a normal "boot finished" signal often never comes. The app also listens for the ignition signals different makers use, and for the screen waking after a long sleep.
+**How head unit mode notices the car starting:** most Chinese head units don't shut down when you turn the car off. They sleep (often for days) and wake up when you start the car. Many send no signal when they wake, so the app checks every few seconds whether the unit has just been asleep. While a unit sleeps, Android's uptime clock stops but real time keeps going. When the two drift apart, the app knows the car was off and plays the duaa. It also listens for boot, ignition (ACC) and screen signals, for units that do send them.
 
 ---
 
@@ -150,8 +151,15 @@ Every build is signed with the same key, so a new version installs over the old 
 
 **Head unit only:**
 
-5. Set the **Delay after the car starts** (default 5 s).
-6. If your unit has a "start apps on boot" or "auto-start" list in its settings, add Travel Duaa.
+5. Under **Play when the head unit…**, choose:
+   - **Starts up fully**: after a full restart, or when the unit was off longer than its sleep time
+   - **Wakes from sleep**: car off, then back on, without a full restart (what most units do day to day)
+6. Set **Car must be off for at least** (default 1 min), so switching off and straight back on doesn't replay it.
+7. Set the **Delay after the car starts** (default 5 s). If you hear nothing or it's cut off, raise this to 5–10 s.
+8. **Optional: After the duaa, open.** Pick an app to open once the duaa has finished, e.g. **CPLink** for CarPlay / Android Auto.
+   - Allow **Display over other apps** when asked. Android needs it to let Travel Duaa open another app.
+   - Turn off that app's own auto-start (if it has one), so it doesn't open before the duaa has finished.
+9. If your unit has a "start apps on boot" or "auto-start" list in its settings, add Travel Duaa.
 
 ---
 
@@ -190,9 +198,14 @@ Open the app and read the **Event log**. It shows every signal the app received 
 
 | Log says | Meaning / fix |
 |---|---|
-| Nothing at all after starting the car | The head unit sends a signal the app doesn't know. Turn on *Also play when the screen wakes*, and open an issue with the unit's model and chipset (Settings → About). |
+| `Couldn't open …` | Allow **Display over other apps** for Travel Duaa (Settings → Apps → Travel Duaa). |
+| `Duaa finished` → `Opened CPLink` but CPLink was already open | CPLink opened itself first. Turn off its own auto-start / auto-open setting. |
+| Nothing at all after starting the car | The unit closed the app and didn't restart it. Add Travel Duaa to the unit's auto-start / keep-in-background list, and don't use "clean memory" tools on it. |
 | `Skipped: already played in the last …` | Working as intended: it only plays once per car start. Use **🧪 Test** to play again straight away (tests don't count). |
-| `Screen on (was off …)` then `Not playing: screen was off less than …` | The unit was only off briefly. Lower **Screen must be off for at least** in Settings, or wait longer before switching back on. |
+| `Head unit was asleep for …` | The app noticed the unit sleeping and waking. Normal. |
+| `Not playing: off for less than …` | The car was only off briefly. Lower **Car must be off for at least**, or wait longer. |
+| `Not playing: "wakes from sleep" is turned off` | Turn on **Wakes from sleep** in Settings. |
+| `App restarted, last running … ago` | The unit closed the app while it slept, and Android restarted it. It still plays if the gap was long enough. |
 | `Screen off` / `Car off signal: …` | Shows what your unit sends when the car is switched off. Useful when reporting a problem. |
 | `Skipped: auto-play is off` | Turn on the first switch under **Settings**. |
 | `No audio for "…"` | Select the duaa and tap **＋ Add audio**. |

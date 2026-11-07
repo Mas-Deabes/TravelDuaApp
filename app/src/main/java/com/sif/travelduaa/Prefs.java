@@ -30,9 +30,13 @@ public class Prefs {
 
     // Head unit settings
     public static final String HU_DELAY = "hu_delay";              // seconds
-    public static final String HU_SCREEN_WAKE = "hu_screen_wake";  // also play on screen wake
-    public static final String HU_MIN_SLEEP_MIN = "hu_min_sleep";  // minutes screen must be off
+    public static final String HU_ON_BOOT = "hu_on_boot";          // play after a full start-up
+    public static final String HU_SCREEN_WAKE = "hu_screen_wake";  // play when waking from sleep
+    public static final String HU_MIN_SLEEP_MIN = "hu_min_sleep";  // minutes the car must be off
     public static final String SCREEN_OFF_AT = "screen_off_at";
+    public static final String LAST_ALIVE = "last_alive";          // last time the app was running
+    public static final String AFTER_APP = "after_app";            // package to open after the duaa
+    public static final String AFTER_APP_NAME = "after_app_name";
 
     // Phone settings
     public static final String CARS = "cars";                      // set of "MAC|Name"

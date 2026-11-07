@@ -102,6 +102,8 @@ public class Ui {
         t.setTextSize(size);
         t.setTextColor(color);
         t.setLineSpacing(0, 1.15f);
+        // Line up with the screen's start (left), even if the text begins with Arabic.
+        t.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
         return t;
     }
 
@@ -122,6 +124,7 @@ public class Ui {
     /** Arabic text, right-to-left, larger and spaced out for reading. */
     public TextView arabic(String s, float size) {
         TextView t = text(s, size, TEXT);
+        t.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         t.setGravity(Gravity.RIGHT);
         t.setTextDirection(View.TEXT_DIRECTION_RTL);
         t.setLineSpacing(dp(6), 1.1f);
@@ -132,6 +135,7 @@ public class Ui {
 
     public TextView button(String s, int style, View.OnClickListener l) {
         TextView b = bold(s, 16, style == PRIMARY ? 0xFFFFFFFF : (style == SECONDARY ? TEXT : ACCENT));
+        b.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(16), dp(13), dp(16), dp(13));
         b.setMinHeight(dp(52));   // big enough to tap while in a car

@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ResolveInfo;
 import android.database.Cursor;
 import android.graphics.Typeface;
 import android.net.Uri;
@@ -40,8 +41,12 @@ public class MainActivity extends Activity {
     private static final int ASK_PERMISSIONS = 2;
 
     private Ui ui;
-    private ScrollView scroll;
+    private ScrollView scroll;          // the main column (left column on wide screens)
     private LinearLayout content;
+    private ScrollView detailScroll;    // right column on wide screens, else null
+    private LinearLayout detail;
+    private boolean wide;               // landscape screen wide enough for two columns
+    private int sidePadding;            // single-column padding
     private TextView logText;
     private View logCardView;
     private boolean askedPermissions = false;
@@ -60,19 +65,41 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         ui = new Ui(this);
 
+        float density = getResources().getDisplayMetrics().density;
+        float widthDp = getResources().getDisplayMetrics().widthPixels / density;
+        float heightDp = getResources().getDisplayMetrics().heightPixels / density;
+        // Head units (e.g. 1280x720) are wide and short: use two columns there.
+        wide = widthDp >= 840 && widthDp > heightDp;
+
         scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Ui.BG);
         scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
         content = ui.vertical();
-
-        // On wide head unit screens, keep the content in a readable column in the middle.
-        float widthDp = getResources().getDisplayMetrics().widthPixels
-                / getResources().getDisplayMetrics().density;
-        int side = (int) Math.max(16, (widthDp - 760) / 2);
-        content.setPadding(ui.dp(side), ui.dp(24), ui.dp(side), ui.dp(32));
-
         scroll.addView(content);
-        setContentView(scroll);
+
+        if (wide) {
+            LinearLayout root = ui.row();
+            root.setGravity(Gravity.TOP);
+            root.setBackgroundColor(Ui.BG);
+            root.setPadding(ui.dp(12), 0, ui.dp(12), 0);
+            content.setPadding(ui.dp(8), ui.dp(18), ui.dp(8), ui.dp(24));
+
+            detailScroll = new ScrollView(this);
+            detailScroll.setFillViewport(true);
+            detailScroll.setVerticalScrollBarEnabled(false);
+            detail = ui.vertical();
+            detail.setPadding(ui.dp(8), ui.dp(18), ui.dp(8), ui.dp(24));
+            detailScroll.addView(detail);
+
+            root.addView(scroll, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+            root.addView(detailScroll, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.25f));
+            setContentView(root);
+        } else {
+            scroll.setBackgroundColor(Ui.BG);
+            sidePadding = (int) Math.max(16, (widthDp - 760) / 2);
+            content.setPadding(ui.dp(sidePadding), ui.dp(24), ui.dp(sidePadding), ui.dp(32));
+            setContentView(scroll);
+        }
         buildUi();
     }
 
@@ -80,6 +107,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         handler.post(liveLog);
+        if (Prefs.isHeadUnit(this) && !Prefs.get(this).getString(Prefs.AFTER_APP, "").isEmpty()) buildUi();
     }
 
     @Override
@@ -90,11 +118,16 @@ public class MainActivity extends Activity {
 
     private void buildUi() {
         int scrollY = scroll.getScrollY();
+        int detailY = detailScroll != null ? detailScroll.getScrollY() : 0;
         content.removeAllViews();
+        if (detail != null) detail.removeAllViews();
         logText = null;
+        logCardView = null;
         if (Prefs.mode(this).isEmpty()) {
+            if (detailScroll != null) detailScroll.setVisibility(View.GONE);
             buildModeChooser();
         } else {
+            if (detailScroll != null) detailScroll.setVisibility(View.VISIBLE);
             buildMain();
             if (!askedPermissions) {
                 askedPermissions = true;
@@ -103,6 +136,7 @@ public class MainActivity extends Activity {
             if (Prefs.isHeadUnit(this)) sendToService(DuaaService.ACTION_HU_WATCH);
         }
         scroll.post(() -> scroll.scrollTo(0, scrollY));
+        if (detailScroll != null) detailScroll.post(() -> detailScroll.scrollTo(0, detailY));
     }
 
     // =====================================================================
@@ -115,12 +149,25 @@ public class MainActivity extends Activity {
         q.setPadding(0, ui.dp(8), 0, ui.dp(16));
         content.addView(q);
 
-        content.addView(modeOption("📱", "On my phone",
+        View phone = modeOption("📱", "On my phone",
                 "Plays through the car speakers when your phone connects to the car by Bluetooth.",
-                Prefs.MODE_PHONE));
-        content.addView(modeOption("🚗", "On the car head unit",
-                "Plays when the car starts or the screen wakes up. No Bluetooth needed.",
-                Prefs.MODE_HEAD_UNIT));
+                Prefs.MODE_PHONE);
+        View unit = modeOption("🚗", "On the car head unit",
+                "Plays when the car starts or wakes up. No Bluetooth needed.",
+                Prefs.MODE_HEAD_UNIT);
+        if (wide) {
+            LinearLayout r = ui.row();
+            r.setGravity(Gravity.TOP);
+            LinearLayout.LayoutParams a = ui.weight(1);
+            LinearLayout.LayoutParams b = ui.weight(1);
+            b.leftMargin = ui.dp(14);
+            r.addView(phone, a);
+            r.addView(unit, b);
+            content.addView(r);
+        } else {
+            content.addView(phone);
+            content.addView(unit);
+        }
     }
 
     private View modeOption(String emoji, String title, String desc, String mode) {
@@ -157,18 +204,31 @@ public class MainActivity extends Activity {
     // =====================================================================
 
     private void buildMain() {
-        content.addView(header(true));
-        content.addView(duaCard());
-        content.addView(testCard());
-        content.addView(Prefs.isPhone(this) ? phoneSettingsCard() : headUnitSettingsCard());
-        logCardView = logCard();
-        content.addView(logCardView);
-        content.addView(footer());
+        if (wide) {
+            // Left: header, duaa list, settings, log.  Right: the selected duaa, test.
+            content.addView(header(true));
+            content.addView(duaCard());
+            content.addView(Prefs.isPhone(this) ? phoneSettingsCard() : headUnitSettingsCard());
+            logCardView = logCard();
+            content.addView(logCardView);
+            content.addView(footer());
+
+            detail.addView(duaDetailCard());
+            detail.addView(testCard());
+        } else {
+            content.addView(header(true));
+            content.addView(duaCard());
+            content.addView(testCard());
+            content.addView(Prefs.isPhone(this) ? phoneSettingsCard() : headUnitSettingsCard());
+            logCardView = logCard();
+            content.addView(logCardView);
+            content.addView(footer());
+        }
     }
 
     private View header(boolean showMode) {
         LinearLayout h = ui.vertical();
-        h.setPadding(ui.dp(4), 0, ui.dp(4), ui.dp(18));
+        h.setPadding(ui.dp(4), 0, ui.dp(4), ui.dp(wide ? 12 : 18));
 
         LinearLayout top = ui.row();
 
@@ -178,13 +238,14 @@ public class MainActivity extends Activity {
         logo.setScaleType(ImageView.ScaleType.CENTER_CROP);
         logo.setBackground(ui.rounded(Ui.CARD, 16, 0, 0));
         logo.setClipToOutline(true);
-        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(ui.dp(64), ui.dp(64));
+        int logoSize = ui.dp(wide ? 56 : 64);
+        LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(logoSize, logoSize);
         logoLp.rightMargin = ui.dp(14);
         top.addView(logo, logoLp);
 
         LinearLayout titles = ui.vertical();
-        titles.addView(ui.bold("Travel Duaa", 30, Ui.TEXT));
-        titles.addView(ui.text("دعاء السفر", 20, Ui.GOLD));
+        titles.addView(ui.bold("Travel Duaa", wide ? 26 : 30, Ui.TEXT));
+        titles.addView(ui.text("دعاء السفر", wide ? 18 : 20, Ui.GOLD));
         top.addView(titles, ui.weight(1));
 
         if (showMode) {
@@ -236,7 +297,7 @@ public class MainActivity extends Activity {
 
         LinearLayout titles = ui.vertical();
         titles.addView(ui.bold(d.title, 17, Ui.TEXT));
-        titles.addView(ui.text(d.titleAr + "  ·  " + d.source, 14, Ui.MUTED));
+        titles.addView(ui.text(sourceLine(d), 14, Ui.MUTED));
         top.addView(titles, ui.weight(1));
 
         Duas.Recording audio = Duas.audioFor(this, d);
@@ -252,12 +313,36 @@ public class MainActivity extends Activity {
             });
             return box;
         }
+        // Selected: on phones the details open inside the card; on wide screens they're on the right.
+        if (!wide) addDuaDetails(box, d, audio, false);
+        return box;
+    }
 
-        // Selected: show the full Arabic text
+    /** Right column on wide screens: the selected duaa in full. */
+    private View duaDetailCard() {
+        Duas.Dua d = Duas.selectedDua(this);
+        Duas.Recording audio = Duas.audioFor(this, d);
+        LinearLayout card = ui.card(null);
+        card.setPadding(ui.dp(22), ui.dp(18), ui.dp(22), ui.dp(20));
+
+        LinearLayout top = ui.row();
+        LinearLayout titles = ui.vertical();
+        titles.addView(ui.bold(d.title, 22, Ui.TEXT));
+        titles.addView(ui.text(sourceLine(d), 15, Ui.MUTED));
+        top.addView(titles, ui.weight(1));
+        top.addView(ui.chip(audio != null ? "🎵 Ready" : "No audio chosen", audio != null ? Ui.ACCENT : Ui.WARN));
+        card.addView(top);
+
+        addDuaDetails(card, d, audio, true);
+        return card;
+    }
+
+    /** Arabic text, English meaning, the audio list, and the Add / Play / Stop buttons. */
+    private void addDuaDetails(LinearLayout box, Duas.Dua d, Duas.Recording audio, boolean big) {
         if (!d.text.isEmpty()) {
-            TextView ar = ui.arabic(d.text, 21);
+            TextView ar = ui.arabic(d.text, big ? 24 : 21);
             ar.setBackground(ui.rounded(Ui.BG, 12, 0, 0));
-            ar.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14));
+            ar.setPadding(ui.dp(18), ui.dp(16), ui.dp(18), ui.dp(16));
             LinearLayout.LayoutParams alp = ui.matchWidth();
             alp.topMargin = ui.dp(12);
             alp.bottomMargin = ui.dp(6);
@@ -267,8 +352,7 @@ public class MainActivity extends Activity {
             TextView meaningLabel = ui.label("Meaning");
             meaningLabel.setPadding(0, ui.dp(8), 0, ui.dp(4));
             box.addView(meaningLabel);
-            TextView en = ui.text(d.meaning, 16, Ui.TEXT);
-            en.setTextDirection(View.TEXT_DIRECTION_LTR);
+            TextView en = ui.text(d.meaning, big ? 17 : 16, Ui.TEXT);
             en.setLineSpacing(ui.dp(3), 1.1f);
             box.addView(en);
         }
@@ -290,7 +374,14 @@ public class MainActivity extends Activity {
                 ui.button("＋  Add audio", Ui.SECONDARY, v -> pickFile(d)),
                 ui.button("▶  Play", Ui.PRIMARY, v -> sendToService(DuaaService.ACTION_PLAY_NOW)),
                 ui.button("■  Stop", Ui.SECONDARY, v -> sendToService(DuaaService.ACTION_STOP))));
-        return box;
+    }
+
+    /**
+     * "Sahih Muslim 1342  ·  دعاء السفر كاملاً" in that order. The Arabic part is wrapped in
+     * direction marks, so mixing English and Arabic on one line doesn't shuffle the order.
+     */
+    private String sourceLine(Duas.Dua d) {
+        return d.source + "  ·  \u2067" + d.titleAr + "\u2069";
     }
 
     /** One audio in a duaa's list: tap to use it; audios you added can be removed. */
@@ -367,20 +458,113 @@ public class MainActivity extends Activity {
     private View headUnitSettingsCard() {
         SharedPreferences p = Prefs.get(this);
         LinearLayout card = ui.card("Settings");
-        card.addView(ui.switchRow("Play when the car starts", null,
+        card.addView(ui.switchRow("Play automatically", "Turn off to stop it playing by itself.",
                 p.getBoolean(Prefs.ENABLED, true),
                 (b, on) -> p.edit().putBoolean(Prefs.ENABLED, on).apply()));
         card.addView(ui.divider());
-        card.addView(ui.switchRow("Also play when the screen wakes",
-                "Helps units that don't send an ignition signal.",
+
+        TextView when = ui.bold("Play when the head unit…", 17, Ui.TEXT);
+        when.setPadding(0, ui.dp(4), 0, 0);
+        card.addView(when);
+        card.addView(ui.switchRow("Starts up fully",
+                "After a full restart, or when it was off longer than its sleep time.",
+                p.getBoolean(Prefs.HU_ON_BOOT, true),
+                (b, on) -> p.edit().putBoolean(Prefs.HU_ON_BOOT, on).apply()));
+        card.addView(ui.switchRow("Wakes from sleep",
+                "Car turned off, then back on, without a full restart. "
+                        + "This is what most head units do day to day.",
                 p.getBoolean(Prefs.HU_SCREEN_WAKE, true),
                 (b, on) -> p.edit().putBoolean(Prefs.HU_SCREEN_WAKE, on).apply()));
-        card.addView(minutesStepper("Screen must be off for at least",
-                "So a quick screen-off while driving doesn't replay it.", Prefs.HU_MIN_SLEEP_MIN, 1));
+        card.addView(minutesStepper("Car must be off for at least",
+                "So switching off and straight back on doesn't replay it.", Prefs.HU_MIN_SLEEP_MIN, 1));
         card.addView(ui.divider());
         card.addView(stepper("Delay after the car starts",
                 "Gives the head unit time to wake its speakers.", Prefs.HU_DELAY, 5));
+        card.addView(ui.divider());
+
+        // After the duaa, open another app (e.g. CPLink / CarPlay)
+        LinearLayout afterRow = ui.row();
+        LinearLayout texts = ui.vertical();
+        texts.addView(ui.text("After the duaa, open", 17, Ui.TEXT));
+        String afterName = p.getString(Prefs.AFTER_APP_NAME, "");
+        texts.addView(ui.text(afterName.isEmpty() ? "Nothing" : afterName, 14,
+                afterName.isEmpty() ? Ui.MUTED : Ui.ACCENT));
+        afterRow.addView(texts, ui.weight(1));
+        afterRow.addView(ui.button("Choose", Ui.SECONDARY, v -> chooseAfterApp()));
+        card.addView(afterRow);
+        if (!afterName.isEmpty()) {
+            card.addView(ui.text("Tip: turn off " + afterName + "'s own auto-start, so it doesn't open "
+                    + "before the duaa has finished.", 14, Ui.MUTED));
+            if (!canOpenOtherApps()) {
+                TextView warn = ui.text("⚠  Needs \"Display over other apps\" to open " + afterName + ".", 15, Ui.WARN);
+                warn.setPadding(0, ui.dp(6), 0, 0);
+                card.addView(warn);
+                card.addView(ui.buttonRow(ui.button("Allow it", Ui.PRIMARY, v -> askOverlayPermission())));
+            }
+        }
         return card;
+    }
+
+    /** Lists the apps on the head unit; the chosen one opens when the duaa finishes. */
+    private void chooseAfterApp() {
+        Intent main = new Intent(Intent.ACTION_MAIN);
+        main.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> found = getPackageManager().queryIntentActivities(main, 0);
+        List<String[]> apps = new ArrayList<>();   // {name, package}
+        for (ResolveInfo ri : found) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(getPackageName())) continue;
+            String name = String.valueOf(ri.loadLabel(getPackageManager()));
+            boolean dup = false;
+            for (String[] a : apps) if (a[1].equals(pkg)) dup = true;
+            if (!dup) apps.add(new String[]{name, pkg});
+        }
+        Collections.sort(apps, (a, b) -> a[0].compareToIgnoreCase(b[0]));
+
+        String[] labels = new String[apps.size() + 1];
+        labels[0] = "Nothing";
+        for (int i = 0; i < apps.size(); i++) labels[i + 1] = apps.get(i)[0];
+
+        new AlertDialog.Builder(this)
+                .setTitle("After the duaa, open…")
+                .setItems(labels, (d, which) -> {
+                    SharedPreferences.Editor e = Prefs.get(this).edit();
+                    if (which == 0) {
+                        e.remove(Prefs.AFTER_APP).remove(Prefs.AFTER_APP_NAME).apply();
+                        Prefs.log(this, "After the duaa: open nothing");
+                    } else {
+                        String[] app = apps.get(which - 1);
+                        e.putString(Prefs.AFTER_APP, app[1]).putString(Prefs.AFTER_APP_NAME, app[0]).apply();
+                        Prefs.log(this, "After the duaa: open " + app[0]);
+                        if (!canOpenOtherApps()) askOverlayPermission();
+                    }
+                    buildUi();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** Android 10+ only lets background apps open other apps with "Display over other apps". */
+    private boolean canOpenOtherApps() {
+        return Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
+    }
+
+    private void askOverlayPermission() {
+        new AlertDialog.Builder(this)
+                .setTitle("Allow \"Display over other apps\"")
+                .setMessage("Android needs this so Travel Duaa can open another app after the duaa. "
+                        + "On the next screen, turn it on for Travel Duaa, then come back.")
+                .setPositiveButton("Open settings", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName())));
+                    } catch (Exception ex) {
+                        startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:" + getPackageName())));
+                    }
+                })
+                .setNegativeButton("Later", null)
+                .show();
     }
 
     private View phoneSettingsCard() {
@@ -432,7 +616,7 @@ public class MainActivity extends Activity {
         r.addView(texts, ui.weight(1));
 
         TextView value = ui.bold(Prefs.get(this).getInt(key, def) + " s", 18, Ui.TEXT);
-        value.setGravity(Gravity.CENTER);
+        value.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         value.setMinWidth(ui.dp(56));
         TextView minus = ui.button("−", Ui.SECONDARY, v -> value.setText(changeBy(key, def, -1) + " s"));
         TextView plus = ui.button("+", Ui.SECONDARY, v -> value.setText(changeBy(key, def, 1) + " s"));
@@ -453,7 +637,7 @@ public class MainActivity extends Activity {
         texts.addView(ui.text(subtitle, 14, Ui.MUTED));
         r.addView(texts, ui.weight(1));
         TextView value = ui.bold(Prefs.get(this).getInt(key, def) + " min", 18, Ui.TEXT);
-        value.setGravity(Gravity.CENTER);
+        value.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         value.setMinWidth(ui.dp(64));
         TextView minus = ui.button("−", Ui.SECONDARY, v -> value.setText(changeMinutes(key, def, -1) + " min"));
         TextView plus = ui.button("+", Ui.SECONDARY, v -> value.setText(changeMinutes(key, def, 1) + " min"));
@@ -505,7 +689,7 @@ public class MainActivity extends Activity {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) { }
         TextView t = ui.text("Version " + version, 13, Ui.MUTED);
-        t.setGravity(Gravity.CENTER);
+        t.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         t.setPadding(0, ui.dp(8), 0, 0);
         return t;
     }
