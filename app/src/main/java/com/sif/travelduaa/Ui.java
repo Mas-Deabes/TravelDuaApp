@@ -14,16 +14,58 @@ import android.widget.TextView;
 
 /** Colours and small building blocks for the screen, so MainActivity stays readable. */
 public class Ui {
-    // Dark green theme, easy to read in a car at night
-    public static final int BG = 0xFF0E1714;
-    public static final int CARD = 0xFF16231E;
-    public static final int CARD_2 = 0xFF1D2D27;
-    public static final int STROKE = 0xFF2A3D35;
-    public static final int ACCENT = 0xFF1FA37A;
-    public static final int GOLD = 0xFFF2C94C;
-    public static final int TEXT = 0xFFEAF2EE;
-    public static final int MUTED = 0xFF9DB2A8;
-    public static final int WARN = 0xFFE8A13A;
+    // Current colours. Set by applyTheme(): dark (default) or light.
+    public static int BG, CARD, CARD_2, STROKE, ACCENT, GOLD, TEXT, MUTED, WARN;
+    public static boolean light = false;
+
+    public static final String THEME_DARK = "dark";
+    public static final String THEME_LIGHT = "light";
+    public static final String THEME_SYSTEM = "system";
+
+    static { setDark(); }
+
+    /** Dark green theme: easy on the eyes in a car at night. */
+    private static void setDark() {
+        light = false;
+        BG = 0xFF0E1714;
+        CARD = 0xFF16231E;
+        CARD_2 = 0xFF1D2D27;
+        STROKE = 0xFF2A3D35;
+        ACCENT = 0xFF1FA37A;
+        GOLD = 0xFFF2C94C;
+        TEXT = 0xFFEAF2EE;
+        MUTED = 0xFF9DB2A8;
+        WARN = 0xFFE8A13A;
+    }
+
+    /** Light theme: same layout, light colours, darker green and gold for contrast. */
+    private static void setLight() {
+        light = true;
+        BG = 0xFFF2F6F4;
+        CARD = 0xFFFFFFFF;
+        CARD_2 = 0xFFF0F5F2;
+        STROKE = 0xFFD5E1DB;
+        ACCENT = 0xFF138A66;
+        GOLD = 0xFFA87A12;
+        TEXT = 0xFF14211C;
+        MUTED = 0xFF5B6E66;
+        WARN = 0xFFB4650A;
+    }
+
+    /** Picks the colours from the saved choice. Returns true for light. */
+    public static boolean applyTheme(Context c) {
+        String t = Prefs.get(c).getString(Prefs.THEME, THEME_DARK);
+        boolean useLight;
+        if (THEME_SYSTEM.equals(t)) {
+            int night = c.getResources().getConfiguration().uiMode
+                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+            useLight = night != android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        } else {
+            useLight = THEME_LIGHT.equals(t);
+        }
+        if (useLight) setLight(); else setDark();
+        return useLight;
+    }
 
     public static final int PRIMARY = 0, SECONDARY = 1, PLAIN = 2;
 
@@ -47,7 +89,7 @@ public class Ui {
 
     /** Adds the touch ripple effect on top of a background. */
     public Drawable pressable(Drawable bg) {
-        return new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), bg, null);
+        return new RippleDrawable(ColorStateList.valueOf(light ? 0x22000000 : 0x33FFFFFF), bg, null);
     }
 
     // ---------- Layout ----------

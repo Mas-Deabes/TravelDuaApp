@@ -3,6 +3,8 @@
     <color name="bg">#0E1714</color>
     <color name="accent">#1FA37A</color>
     <color name="accent_dark">#14765A</color>
+    <color name="bg_light">#F2F6F4</color>
+    <color name="accent_light">#138A66</color>
 
     <!-- Dark theme: easy on the eyes in a car at night -->
     <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
@@ -12,5 +14,15 @@
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@color/bg</item>
         <item name="android:navigationBarColor">@color/bg</item>
+    </style>
+
+    <!-- Light theme: chosen in setup or Settings → Appearance -->
+    <style name="AppThemeLight" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/accent_light</item>
+        <item name="android:colorPrimaryDark">@color/bg_light</item>
+        <item name="android:colorAccent">@color/accent_light</item>
+        <item name="android:windowBackground">@color/bg_light</item>
+        <item name="android:statusBarColor">@color/bg_light</item>
+        <item name="android:navigationBarColor">@color/bg_light</item>
     </style>
 </resources>

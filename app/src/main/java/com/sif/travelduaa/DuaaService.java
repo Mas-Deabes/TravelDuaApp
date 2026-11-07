@@ -43,6 +43,10 @@ public class DuaaService extends Service {
     /** Test button: runs the real start-up steps, but ignores "already played" and the on/off switch. */
     public static final String ACTION_TEST = "com.sif.travelduaa.TEST";
     public static final String EXTRA_FULL_BOOT = "full_boot";
+    /** From the accessibility helper: it noticed the unit waking up. */
+    public static final String ACTION_HU_WOKE = "com.sif.travelduaa.HU_WOKE";
+    /** From the accessibility helper after it (re)connects: check how long the app was gone. */
+    public static final String ACTION_HU_CHECK_AWAY = "com.sif.travelduaa.HU_CHECK_AWAY";
     /** Volume slider moved: apply it now if that recording is playing. */
     public static final String ACTION_VOLUME = "com.sif.travelduaa.VOLUME";
     public static final String EXTRA_KEY = "key";
@@ -95,6 +99,8 @@ public class DuaaService extends Service {
     };
 
     public static volatile boolean running = false;
+    /** Title of the duaa playing right now, or null. Shown as a banner in the app. */
+    public static volatile String nowPlaying = null;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private MediaPlayer player;
@@ -198,6 +204,13 @@ public class DuaaService extends Service {
                 }
                 break;
             case ACTION_HU_WATCH:
+                break;
+            case ACTION_HU_WOKE:
+                Prefs.log(this, "Helper noticed the car start");
+                wokeUp();
+                break;
+            case ACTION_HU_CHECK_AWAY:
+                if (firstStart) checkTimeAway("App started by the helper");
                 break;
             case ACTION_PHONE_CONNECTED:
                 phoneConnected();
@@ -437,6 +450,8 @@ public class DuaaService extends Service {
                     AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
             acquireWakeLock();
             player.start();
+            nowPlaying = dua.title;
+            if (startUp) showAppIfWanted();
             Prefs.log(this, "▶ Playing: " + dua.title + " (" + rec.name + ", "
                     + Duas.volume(this, rec) + "%)");
         } catch (Exception e) {
@@ -490,7 +505,23 @@ public class DuaaService extends Service {
         }
     }
 
+    /** Head unit option: bring Travel Duaa to the front while the duaa plays (e.g. over CPLink). */
+    private void showAppIfWanted() {
+        if (!Prefs.isHeadUnit(this)) return;
+        if (!Prefs.get(this).getBoolean(Prefs.HU_SHOW_WHILE_PLAYING, false)) return;
+        try {
+            Intent i = new Intent(this, MainActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(i);
+            Prefs.log(this, "Showing Travel Duaa while the duaa plays");
+        } catch (Exception e) {
+            Prefs.log(this, "Couldn't show the app: allow \"Display over other apps\"");
+        }
+    }
+
     private void stopPlayer() {
+        nowPlaying = null;
         if (booster != null) {
             try { booster.release(); } catch (Exception ignored) { }
             booster = null;

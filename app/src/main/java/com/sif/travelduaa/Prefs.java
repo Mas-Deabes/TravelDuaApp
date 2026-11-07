@@ -37,6 +37,11 @@ public class Prefs {
     public static final String LAST_ALIVE = "last_alive";          // last time the app was running
     public static final String AFTER_APP = "after_app";            // package to open after the duaa
     public static final String AFTER_APP_NAME = "after_app_name";
+    public static final String HU_SHOW_WHILE_PLAYING = "hu_show_playing"; // bring app to front during duaa
+    public static final String THEME = "theme";                    // dark (default) / light / system
+    public static final String SETUP_DONE = "setup_done";
+    public static final String SETUP_STEP = "setup_step";          // so setup resumes after a car restart
+    public static final String TEST_SINCE = "test_since";          // final setup test started at
 
     // Phone settings
     public static final String CARS = "cars";                      // set of "MAC|Name"

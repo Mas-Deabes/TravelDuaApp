@@ -47,6 +47,20 @@
                 android:value="Waits for the car head unit to wake from sleep so it can play a short audio prayer" />
         </service>
 
+        <!-- Head unit mode: optional "Extra reliability" helper (user turns it on in Accessibility) -->
+        <service
+            android:name=".WakeHelperService"
+            android:label="@string/wake_helper_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/wake_helper" />
+        </service>
+
         <!-- Head unit mode -->
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter android:priority="999">

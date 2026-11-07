@@ -19,6 +19,10 @@ It runs either on **your phone** (plays through the car speakers over Bluetooth)
 - **Test button** that runs the real start-up steps, so you can check it without driving.
 - **Event log** showing what happened at each start-up, for troubleshooting.
 - **Open an app after the duaa** (head unit), e.g. CPLink for CarPlay, so it starts once the duaa has finished.
+- **Show the app while the duaa plays** (head unit): brings Travel Duaa to the front, e.g. over CPLink, with a "Now playing" banner.
+- **Guided setup** on first launch, ending with a live test in the car.
+- **Needs attention** checklist on the main screen: anything that would stop the duaa playing, with a button to fix it.
+- **Light and dark mode** (dark by default), or follow the system.
 - **Dark design** that's easy to read in the car at night, with large buttons.
 
 ---
@@ -138,29 +142,54 @@ Every build is signed with the same key, so a new version installs over the old 
 
 ## Setting it up
 
-1. Open the app and choose **📱 On my phone** or **🚗 On the car head unit**.
-2. Tap a duaa to select it, then tap an audio in its **Audio** list (or **＋ Add audio**).
-3. Tap **▶ Play** to hear it.
-4. Tap **🧪 Test** to run the full start-up steps.
+The first time you open the app, a **guided setup** takes you through everything (about 2 minutes):
 
-**Phone mode only:**
+| Step | What you do |
+|---|---|
+| Welcome | Logo and what the app does |
+| 1. Light or dark | Dark (default), Light, or Follow system |
+| 2. Where is it installed | Phone or head unit. The app suggests the likely one (wide screen / no real battery = head unit). |
+| 3. Duaa and audio | Pick the duaa (Arabic text + English meaning), choose or add an audio, play it, set its volume |
+| 4. Settings | **Head unit:** when to play, delays, "After the duaa, open" (e.g. CPLink), "Show while playing", Extra reliability helper. **Phone:** add your car(s), allow Bluetooth, set battery to Unrestricted. |
+| 5. Test | Start the test, then turn the car off and on (or Bluetooth off and on). The screen shows ✅ when the duaa played by itself. You can skip it. |
+| 6. Done | Summary of your choices |
 
-5. Allow the **Bluetooth** and **notification** permissions.
-6. Under **Settings → My cars**, tap **＋ Add a car** and tick your car(s). Car kits are marked 🔊 and listed first.
-   **If the list is empty, nothing plays automatically.** This stops it playing on headphones.
-7. Tap **Open app settings** → **Battery** → **Unrestricted**. Samsung, Xiaomi and Huawei phones stop apps in the background otherwise.
+The setup remembers where you were, so after turning the car off and on for the test, opening the app brings you back to the test result.
 
-**Head unit only:**
+**Run it again** any time from **⚙️ Settings → Appearance → Run the setup again**. **⚙️ Settings → Installed on → Change** opens the setup at step 2.
 
-5. Under **Play when the head unit…**, choose:
-   - **Starts up fully**: after a full restart, or when the unit was off longer than its sleep time
-   - **Wakes from sleep**: car off, then back on, without a full restart (what most units do day to day)
-6. Set **Car must be off for at least** (default 1 min), so switching off and straight back on doesn't replay it. Set it to **0 min** to play every time the unit wakes, however short the stop.
-7. Set the **Delay after the car starts** (default 5 s). If you hear nothing or it's cut off, raise this to 5–10 s.
-8. **Optional: After the duaa, open.** Pick an app to open once the duaa has finished, e.g. **CPLink** for CarPlay / Android Auto.
-   - Allow **Display over other apps** when asked. Android needs it to let Travel Duaa open another app.
-   - Turn off that app's own auto-start (if it has one), so it doesn't open before the duaa has finished.
-9. If your unit has a "start apps on boot" or "auto-start" list in its settings, add Travel Duaa.
+### The three screens
+
+| Screen | What's on it |
+|---|---|
+| **Main** | ⚙️ Settings and 📋 Log buttons, the **Now playing** bar, the **Needs attention** checklist, the duaa (Arabic, meaning, audio, Play) and the **Test** button |
+| **⚙️ Settings** | Installed on (Change), when to play / delays / CPLink (head unit) or your cars / battery (phone), Extra reliability, Appearance, Run the setup again, version |
+| **📋 Log** | The event log on its own, updated live |
+
+**← Back** or Android's back button returns to the main screen.
+
+- **Needs attention** (orange box) appears only when something would stop the duaa playing, e.g. no audio chosen, Bluetooth not allowed, no car added, battery restricted, "Display over other apps" not allowed. Each line has a button to fix it.
+- **Now playing** (green bar) appears while the duaa plays, with a **Stop** button.
+- **Appearance** (in Settings): Dark, Light or Follow system. The screen redraws straight away.
+
+### Head unit extras
+
+- **After the duaa, open:** pick an app (e.g. CPLink) to open once the duaa has finished. Turn off that app's own auto-start, so it doesn't open first.
+- **Show Travel Duaa while the duaa plays:** brings the app to the front during the duaa, then opens the "after" app.
+- Both need **Display over other apps**. The app asks for it, and the checklist reminds you if it's off.
+- If your unit has a "start apps on boot" or "auto-start" list in its settings, add Travel Duaa.
+
+### If it doesn't play after the car wakes
+
+Head units differ a lot. The app has a standard method plus two options, under **If it doesn't play after the car wakes**. They work together: whichever notices the car start first plays the duaa, and it still plays only once.
+
+| Option | What it does | When to use it |
+|---|---|---|
+| **Standard** (always on) | Background service: boot, ignition and screen signals, plus the clock check | Works when the unit keeps apps running while it sleeps |
+| **Extra reliability helper** | An accessibility service. Android keeps it running and restarts it itself, so it survives units that close apps while sleeping. It uses "the screen changed" only as a nudge to check for a wake-up; it doesn't read the screen. | Turn it on if the duaa plays after a full restart but not after waking |
+| **"Do not sleep"** (head unit setting) | The unit fully shuts down when the car is off, so every start is a full start-up | Last resort. Always works, but start-up is slower (about 20–40 s) |
+
+**Turning on the helper:** tap **Turn on in Accessibility**, find **Travel Duaa – car start helper**, and switch it on. On Android 13 and newer, if it's greyed out, open **App info → ⋮ → Allow restricted settings** first.
 
 ---
 
@@ -206,6 +235,8 @@ Open the app and read the **Event log**. It shows every signal the app received 
 | `Head unit was asleep for …` | The app noticed the unit sleeping and waking. Normal. |
 | `Not playing: off for less than …` | The car was only off briefly. Lower **Car must be off for at least**, or wait longer. |
 | `Not playing: "wakes from sleep" is turned off` | Turn on **Wakes from sleep** in Settings. |
+| `Extra reliability helper connected` | The helper is on and running. |
+| `Helper noticed the car start` | The helper caught the wake-up. |
 | `App restarted, last running … ago` | The unit closed the app while it slept, and Android restarted it. It still plays if the gap was long enough. |
 | `Screen off` / `Car off signal: …` | Shows what your unit sends when the car is switched off. Useful when reporting a problem. |
 | `Skipped: auto-play is off` | Turn on the first switch under **Settings**. |
@@ -228,12 +259,13 @@ Requirements: Android Studio (or JDK 17 + Android SDK 35). The app runs on Andro
 
 | File | What it does |
 |---|---|
-| `MainActivity.java` | The screen: mode choice, duaa cards and audio choice, test button, settings, event log |
-| `Ui.java` | Colours and building blocks for the screen |
+| `MainActivity.java` | The screen: guided setup, checklist, duaa cards and audio, test button, settings, appearance, event log |
+| `Ui.java` | Light / dark colours and building blocks for the screen |
 | `Duas.java` | The duaa texts, finding every audio (built-in and added on the device), and each duaa's audio choice |
 | `DuaaService.java` | Waits for the right moment and plays the audio |
 | `BootReceiver.java` | Head unit mode: boot and ignition signals |
 | `BluetoothReceiver.java` | Phone mode: car Bluetooth connect / disconnect |
+| `WakeHelperService.java` | Optional "Extra reliability" accessibility helper (head unit) |
 | `Compat.java` | Calls that differ between Android versions |
 | `Prefs.java` | Saved settings, the cars list and the event log |
 | `.github/workflows/build.yml` | The GitHub build that publishes the APK to Releases |
