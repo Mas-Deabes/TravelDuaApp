@@ -22,6 +22,7 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -386,16 +387,18 @@ public class MainActivity extends Activity {
 
     /** One audio in a duaa's list: tap to use it; audios you added can be removed. */
     private View audioRow(Duas.Dua d, Duas.Recording r, boolean chosen) {
-        LinearLayout row = ui.row();
-        row.setBackground(ui.pressable(chosen
+        LinearLayout box = ui.vertical();
+        box.setBackground(chosen
                 ? ui.rounded(Ui.BG, 12, Ui.ACCENT, 1)
-                : ui.rounded(Ui.BG, 12, 0, 0)));
-        row.setPadding(ui.dp(12), ui.dp(6), ui.dp(4), ui.dp(6));
-        row.setMinimumHeight(ui.dp(52));
+                : ui.rounded(Ui.BG, 12, 0, 0));
+        box.setPadding(ui.dp(12), ui.dp(6), ui.dp(4), ui.dp(8));
         LinearLayout.LayoutParams lp = ui.matchWidth();
         lp.bottomMargin = ui.dp(6);
-        row.setLayoutParams(lp);
+        box.setLayoutParams(lp);
 
+        // Top line: tap to use this audio
+        LinearLayout row = ui.row();
+        row.setMinimumHeight(ui.dp(48));
         TextView dot = ui.text(chosen ? "◉" : "○", 20, chosen ? Ui.ACCENT : Ui.MUTED);
         dot.setPadding(0, 0, ui.dp(10), 0);
         row.addView(dot);
@@ -418,8 +421,8 @@ public class MainActivity extends Activity {
                     .setNegativeButton("Cancel", null)
                     .show()));
         }
-
         if (!chosen) {
+            row.setBackground(ui.pressable(ui.rounded(0x00000000, 10, 0, 0)));
             row.setClickable(true);
             row.setOnClickListener(v -> {
                 Duas.chooseAudio(this, d, r);
@@ -427,7 +430,47 @@ public class MainActivity extends Activity {
                 buildUi();
             });
         }
-        return row;
+        box.addView(row);
+
+        // Volume slider: 10% to 200%
+        LinearLayout volRow = ui.row();
+        volRow.setPadding(ui.dp(30), 0, ui.dp(8), 0);
+        volRow.addView(ui.text("🔉", 16, Ui.MUTED));
+        SeekBar slider = new SeekBar(this);
+        slider.setMax(190);                                // 0..190 → 10%..200%
+        slider.setProgress(Duas.volume(this, r) - 10);
+        volRow.addView(slider, ui.weight(1));
+        TextView pct = ui.bold(volumeLabel(Duas.volume(this, r)), 14, Ui.TEXT);
+        pct.setMinWidth(ui.dp(92));
+        pct.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_END);
+        volRow.addView(pct);
+        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (!fromUser) return;
+                int percent = progress + 10;
+                pct.setText(volumeLabel(percent));
+                Duas.setVolume(MainActivity.this, r, percent);
+                // If this audio is playing right now, change its volume straight away.
+                if (DuaaService.running) {
+                    Intent i = new Intent(MainActivity.this, DuaaService.class);
+                    i.setAction(DuaaService.ACTION_VOLUME);
+                    i.putExtra(DuaaService.EXTRA_KEY, r.key);
+                    i.putExtra(DuaaService.EXTRA_PERCENT, percent);
+                    startService(i);
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) { }
+            @Override public void onStopTrackingTouch(SeekBar sb) {
+                Prefs.log(MainActivity.this, "Volume for " + r.name + ": " + (sb.getProgress() + 10) + "%");
+            }
+        });
+        box.addView(volRow);
+        return box;
+    }
+
+    private static String volumeLabel(int percent) {
+        return percent > 100 ? percent + "% 🔊" : percent + "%";
     }
 
     // ---------- Test ----------

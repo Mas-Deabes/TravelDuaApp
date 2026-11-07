@@ -10,6 +10,7 @@ import android.content.res.AssetFileDescriptor;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.audiofx.LoudnessEnhancer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -42,6 +43,10 @@ public class DuaaService extends Service {
     /** Test button: runs the real start-up steps, but ignores "already played" and the on/off switch. */
     public static final String ACTION_TEST = "com.sif.travelduaa.TEST";
     public static final String EXTRA_FULL_BOOT = "full_boot";
+    /** Volume slider moved: apply it now if that recording is playing. */
+    public static final String ACTION_VOLUME = "com.sif.travelduaa.VOLUME";
+    public static final String EXTRA_KEY = "key";
+    public static final String EXTRA_PERCENT = "percent";
 
     /** How often the app checks whether the head unit has been asleep. */
     private static final long HEARTBEAT_MS = 5_000;
@@ -71,6 +76,8 @@ public class DuaaService extends Service {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private MediaPlayer player;
+    private String playingKey;                 // which recording is playing
+    private LoudnessEnhancer booster;          // used when volume is above 100%
     private AudioManager audio;
     private PowerManager.WakeLock wakeLock;
     private boolean watchingHeadUnit = false;
@@ -187,6 +194,13 @@ public class DuaaService extends Service {
                 break;
             case ACTION_TEST:
                 runTest(headUnit);
+                break;
+            case ACTION_VOLUME:
+                if (player != null && intent.getStringExtra(EXTRA_KEY) != null
+                        && intent.getStringExtra(EXTRA_KEY).equals(playingKey)) {
+                    applyVolume(intent.getIntExtra(EXTRA_PERCENT, 100));
+                }
+                if (!headUnit && player == null) stopEverything();
                 break;
         }
         return headUnit ? START_STICKY : START_NOT_STICKY;
@@ -378,6 +392,8 @@ public class DuaaService extends Service {
                 }
             }
             player.prepare();
+            playingKey = rec.key;
+            applyVolume(Duas.volume(this, rec));
             player.setOnCompletionListener(mp -> {
                 stopPlayer();
                 Prefs.log(this, "Duaa finished");
@@ -389,7 +405,8 @@ public class DuaaService extends Service {
                     AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
             acquireWakeLock();
             player.start();
-            Prefs.log(this, "▶ Playing: " + dua.title + " (" + rec.name + ")");
+            Prefs.log(this, "▶ Playing: " + dua.title + " (" + rec.name + ", "
+                    + Duas.volume(this, rec) + "%)");
         } catch (Exception e) {
             Prefs.log(this, "Playback error: " + e.getMessage());
             stopPlayer();
@@ -419,7 +436,34 @@ public class DuaaService extends Service {
         }
     }
 
+    /**
+     * 10–100%: turns the recording down.
+     * 100–200%: full volume plus a loudness boost, for recordings saved too quietly.
+     */
+    private void applyVolume(int percent) {
+        if (player == null) return;
+        float v = Math.max(10, Math.min(200, percent)) / 100f;
+        player.setVolume(Math.min(1f, v), Math.min(1f, v));
+        try {
+            if (v > 1f) {
+                if (booster == null) booster = new LoudnessEnhancer(player.getAudioSessionId());
+                // Gain in millibels: 200% ≈ +6 dB = 600 mB
+                booster.setTargetGain((int) Math.round(2000 * Math.log10(v)));
+                booster.setEnabled(true);
+            } else if (booster != null) {
+                booster.setEnabled(false);
+            }
+        } catch (Exception e) {
+            Prefs.log(this, "Volume boost not supported on this device");
+        }
+    }
+
     private void stopPlayer() {
+        if (booster != null) {
+            try { booster.release(); } catch (Exception ignored) { }
+            booster = null;
+        }
+        playingKey = null;
         if (player != null) {
             try { player.stop(); } catch (Exception ignored) { }
             player.release();

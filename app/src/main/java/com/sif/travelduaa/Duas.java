@@ -226,6 +226,15 @@ public class Duas {
         Prefs.get(c).edit().putString(Prefs.AUDIO_FOR + d.id, r.key).apply();
     }
 
+    /** Volume for one recording, in percent: 10–200, default 100. Above 100 is a boost. */
+    public static int volume(Context c, Recording r) {
+        return Prefs.get(c).getInt("vol_" + r.key, 100);
+    }
+
+    public static void setVolume(Context c, Recording r, int percent) {
+        Prefs.get(c).edit().putInt("vol_" + r.key, Math.max(10, Math.min(200, percent))).apply();
+    }
+
     /** What plays when the car starts: the chosen audio of the selected duaa. */
     public static Recording toPlay(Context c) {
         return audioFor(c, selectedDua(c));
@@ -244,7 +253,7 @@ public class Duas {
         if (r.file == null) return;   // built-in recordings can't be deleted on the device
         //noinspection ResultOfMethodCallIgnored
         r.file.delete();
-        Prefs.get(c).edit().remove("name_" + r.file.getName()).apply();
+        Prefs.get(c).edit().remove("name_" + r.file.getName()).remove("vol_" + r.key).apply();
     }
 
     /** Earlier versions saved recordings as duaa_<id>. Rename them to the current style. */

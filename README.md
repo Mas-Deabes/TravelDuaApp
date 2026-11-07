@@ -65,6 +65,7 @@ The **Choose the duaa** section lists four options:
 - **The Audio list**: every audio for that duaa, both built into the app and added by you
   - ◉ marks the one that plays when the car starts. **Tap another one to use it instead.**
   - Audios you added have a **✕** to remove them. Built-in ones can't be removed.
+  - Each audio has its own **volume slider** (10%–200%). Above 100% boosts recordings that were saved too quietly. Move it while the duaa plays to adjust by ear.
 - **Three buttons: ＋ Add audio, ▶ Play and ■ Stop**
 
 **Adding an audio never replaces anything.** It's added to the bottom of the list, and the one you were using stays selected until you tap a different one. The only exception is a duaa's first audio, which is used automatically.
