@@ -60,6 +60,17 @@
                 <action android:name="autochips.intent.action.ACC_ON" />
                 <action android:name="android.intent.action.ACC_ON" />
                 <action android:name="com.android.action.ACC_ON" />
+                <action android:name="car.intent.action.ACC_ON" />
+                <action android:name="com.microntek.bootcheck" />
+                <action android:name="com.microntek.acc_on" />
+                <action android:name="com.microntek.acc.on" />
+                <action android:name="android.intent.action.CAR_ACC_ON" />
+                <action android:name="android.intent.action.MCU_ACC_ON" />
+                <action android:name="com.android.ecar.ACC_ON" />
+                <action android:name="com.fyt.action.ACC_ON" />
+                <action android:name="com.fyt.screen.on" />
+                <action android:name="android.intent.action.TS_ACC_ON" />
+                <action android:name="com.tw.action.ACC_ON" />
             </intent-filter>
         </receiver>
 

@@ -59,6 +59,18 @@ public class DuaaService extends Service {
             "android.intent.action.ACC_ON",
             "com.android.action.ACC_ON",
             "android.intent.action.QUICKBOOT_POWERON",
+            "car.intent.action.ACC_ON",
+            "com.microntek.bootcheck",          // Microntek / MTCx units
+            "com.microntek.acc_on",
+            "com.microntek.acc.on",
+            "android.intent.action.CAR_ACC_ON",  // Allwinner T3 / T8
+            "android.intent.action.MCU_ACC_ON",  // XYAuto / AC8227L / YT9216
+            "com.android.ecar.ACC_ON",           // ECar firmware
+            "com.fyt.action.ACC_ON",             // older FYT
+            "com.fyt.screen.on",
+            "android.intent.action.TS_ACC_ON",   // TopWay TS10 / TS18
+            "com.tw.action.ACC_ON",
+            Intent.ACTION_USER_PRESENT,          // unit is awake and usable again
     };
 
     /** Car-off broadcasts. Only logged, so the event log shows what the unit sends. */
@@ -69,6 +81,16 @@ public class DuaaService extends Service {
             "android.intent.action.ACC_OFF",
             "com.android.action.ACC_OFF",
             "android.intent.action.QUICKBOOT_POWEROFF",
+            "car.intent.action.ACC_OFF",
+            "com.microntek.acc_off",
+            "com.microntek.acc.off",
+            "android.intent.action.CAR_ACC_OFF",
+            "android.intent.action.MCU_ACC_OFF",
+            "com.android.ecar.ACC_OFF",
+            "com.fyt.action.ACC_OFF",
+            "com.fyt.screen.off",
+            "android.intent.action.TS_ACC_OFF",
+            "com.tw.action.ACC_OFF",
             Intent.ACTION_SHUTDOWN,
     };
 

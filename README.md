@@ -31,7 +31,7 @@ It runs either on **your phone** (plays through the car speakers over Bluetooth)
 | **When it plays** | When the phone connects to one of your cars by Bluetooth | After a full start-up, and/or when the unit wakes from sleep. You choose which in Settings. |
 | **How it plays** | Waits until the car's Bluetooth audio is ready (up to 30 s), then plays through the car speakers | Waits a few seconds for the speakers to wake, then plays |
 | **Bluetooth needed** | Yes | No |
-| **Won't repeat within** | 10 minutes (e.g. if Bluetooth drops and reconnects) | 3 minutes (ignition and screen-on signals arrive together) |
+| **Won't repeat within** | 10 minutes (e.g. if Bluetooth drops and reconnects) | 30 s to 3 min, depending on **Car must be off for at least** (several start signals can arrive together) |
 
 **How head unit mode notices the car starting:** most Chinese head units don't shut down when you turn the car off. They sleep (often for days) and wake up when you start the car. Many send no signal when they wake, so the app checks every few seconds whether the unit has just been asleep. While a unit sleeps, Android's uptime clock stops but real time keeps going. When the two drift apart, the app knows the car was off and plays the duaa. It also listens for boot, ignition (ACC) and screen signals, for units that do send them.
 
