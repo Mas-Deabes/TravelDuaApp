@@ -27,7 +27,7 @@ It runs either on **your phone** (plays through the car speakers over Bluetooth)
 | | 📱 Phone | 🚗 Head unit |
 |---|---|---|
 | **Install it on** | Your phone | An Android car head unit (FYT, Topway, MTK and similar Chinese units) |
-| **When it plays** | When the phone connects to one of your cars by Bluetooth | When the unit boots, when the ignition (ACC) comes on, or when the screen wakes after 5+ minutes asleep |
+| **When it plays** | When the phone connects to one of your cars by Bluetooth | When the unit boots, when the ignition (ACC) comes on, or when the screen wakes after being off for a while (1 min by default, adjustable) |
 | **How it plays** | Waits until the car's Bluetooth audio is ready (up to 30 s), then plays through the car speakers | Waits a few seconds for the speakers to wake, then plays |
 | **Bluetooth needed** | Yes | No |
 | **Won't repeat within** | 10 minutes (e.g. if Bluetooth drops and reconnects) | 3 minutes (ignition and screen-on signals arrive together) |
@@ -173,7 +173,7 @@ adb shell am broadcast -a com.fyt.boot.ACCON -n com.sif.travelduaa/.BootReceiver
 
 **Real boot:** Device Manager → **⋮** next to the emulator → **Cold Boot Now**. A normal start restores a saved state and doesn't send the boot signal.
 
-**Wake from sleep:** press the emulator's power button, wait 5+ minutes, then press it again.
+**Wake from sleep:** press the emulator's power button, wait over 1 minute, then press it again.
 
 ### On a real phone
 
@@ -191,7 +191,9 @@ Open the app and read the **Event log**. It shows every signal the app received 
 | Log says | Meaning / fix |
 |---|---|
 | Nothing at all after starting the car | The head unit sends a signal the app doesn't know. Turn on *Also play when the screen wakes*, and open an issue with the unit's model and chipset (Settings → About). |
-| `Skipped: already played in the last …` | Working as intended. Use **🧪 Test** to play again straight away. |
+| `Skipped: already played in the last …` | Working as intended: it only plays once per car start. Use **🧪 Test** to play again straight away (tests don't count). |
+| `Screen on (was off …)` then `Not playing: screen was off less than …` | The unit was only off briefly. Lower **Screen must be off for at least** in Settings, or wait longer before switching back on. |
+| `Screen off` / `Car off signal: …` | Shows what your unit sends when the car is switched off. Useful when reporting a problem. |
 | `Skipped: auto-play is off` | Turn on the first switch under **Settings**. |
 | `No audio for "…"` | Select the duaa and tap **＋ Add audio**. |
 | `Android refused to start` | The phone stopped the app in the background. Set battery use to **Unrestricted**. |

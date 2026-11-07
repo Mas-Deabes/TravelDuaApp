@@ -372,9 +372,11 @@ public class MainActivity extends Activity {
                 (b, on) -> p.edit().putBoolean(Prefs.ENABLED, on).apply()));
         card.addView(ui.divider());
         card.addView(ui.switchRow("Also play when the screen wakes",
-                "Only after the screen was off for 5+ minutes. Helps units that don't send an ignition signal.",
+                "Helps units that don't send an ignition signal.",
                 p.getBoolean(Prefs.HU_SCREEN_WAKE, true),
                 (b, on) -> p.edit().putBoolean(Prefs.HU_SCREEN_WAKE, on).apply()));
+        card.addView(minutesStepper("Screen must be off for at least",
+                "So a quick screen-off while driving doesn't replay it.", Prefs.HU_MIN_SLEEP_MIN, 1));
         card.addView(ui.divider());
         card.addView(stepper("Delay after the car starts",
                 "Gives the head unit time to wake its speakers.", Prefs.HU_DELAY, 5));
@@ -440,6 +442,34 @@ public class MainActivity extends Activity {
         r.addView(value);
         r.addView(plus);
         return r;
+    }
+
+    /** Like stepper(), in minutes (1 to 30). */
+    private View minutesStepper(String title, String subtitle, String key, int def) {
+        LinearLayout r = ui.row();
+        r.setPadding(0, ui.dp(4), 0, ui.dp(4));
+        LinearLayout texts = ui.vertical();
+        texts.addView(ui.text(title, 17, Ui.TEXT));
+        texts.addView(ui.text(subtitle, 14, Ui.MUTED));
+        r.addView(texts, ui.weight(1));
+        TextView value = ui.bold(Prefs.get(this).getInt(key, def) + " min", 18, Ui.TEXT);
+        value.setGravity(Gravity.CENTER);
+        value.setMinWidth(ui.dp(64));
+        TextView minus = ui.button("−", Ui.SECONDARY, v -> value.setText(changeMinutes(key, def, -1) + " min"));
+        TextView plus = ui.button("+", Ui.SECONDARY, v -> value.setText(changeMinutes(key, def, 1) + " min"));
+        minus.setMinWidth(ui.dp(52));
+        plus.setMinWidth(ui.dp(52));
+        r.addView(minus);
+        r.addView(value);
+        r.addView(plus);
+        return r;
+    }
+
+    private int changeMinutes(String key, int def, int by) {
+        SharedPreferences p = Prefs.get(this);
+        int v = Math.max(1, Math.min(30, p.getInt(key, def) + by));
+        p.edit().putInt(key, v).apply();
+        return v;
     }
 
     private int changeBy(String key, int def, int by) {

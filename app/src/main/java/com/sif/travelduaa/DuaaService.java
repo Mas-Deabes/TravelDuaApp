@@ -51,6 +51,17 @@ public class DuaaService extends Service {
             "android.intent.action.QUICKBOOT_POWERON",
     };
 
+    /** Car-off broadcasts. Only logged, so the event log shows what the unit sends. */
+    private static final String[] ACC_OFF_ACTIONS = {
+            "com.fyt.boot.ACCOFF",
+            "autochips.intent.action.QB_POWEROFF",
+            "autochips.intent.action.ACC_OFF",
+            "android.intent.action.ACC_OFF",
+            "com.android.action.ACC_OFF",
+            "android.intent.action.QUICKBOOT_POWEROFF",
+            Intent.ACTION_SHUTDOWN,
+    };
+
     public static volatile boolean running = false;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -58,7 +69,6 @@ public class DuaaService extends Service {
     private AudioManager audio;
     private PowerManager.WakeLock wakeLock;
     private boolean watchingHeadUnit = false;
-    private long screenOffAt = 0;
     private long waitStartedAt = 0;
 
     private final AudioManager.OnAudioFocusChangeListener focusListener = change -> { };
@@ -71,17 +81,28 @@ public class DuaaService extends Service {
         public void onReceive(Context context, Intent intent) {
             String a = intent.getAction();
             if (Intent.ACTION_SCREEN_OFF.equals(a)) {
-                screenOffAt = System.currentTimeMillis();
+                // Saved, not just kept in memory, in case Android restarts the app while asleep.
+                Prefs.get(context).edit().putLong(Prefs.SCREEN_OFF_AT, System.currentTimeMillis()).apply();
+                Prefs.log(context, "Screen off");
                 // Stop playing if the car is switched off mid-duaa.
                 stopPlayer();
             } else if (Intent.ACTION_SCREEN_ON.equals(a)) {
-                long offFor = screenOffAt == 0 ? 0 : System.currentTimeMillis() - screenOffAt;
-                screenOffAt = 0;
+                long offAt = Prefs.get(context).getLong(Prefs.SCREEN_OFF_AT, 0);
+                Prefs.get(context).edit().remove(Prefs.SCREEN_OFF_AT).apply();
+                long offFor = offAt == 0 ? 0 : System.currentTimeMillis() - offAt;
                 boolean useScreen = Prefs.get(context).getBoolean(Prefs.HU_SCREEN_WAKE, true);
-                if (useScreen && offFor >= Prefs.HU_MIN_SLEEP_MS) {
-                    Prefs.log(context, "Screen on after " + (offFor / 60000) + " min asleep");
+                long needed = Prefs.get(context).getInt(Prefs.HU_MIN_SLEEP_MIN, 1) * 60_000L;
+                Prefs.log(context, "Screen on (was off " + duration(offFor) + ")");
+                if (!useScreen) {
+                    Prefs.log(context, "Not playing: screen-wake option is off");
+                } else if (offFor < needed) {
+                    Prefs.log(context, "Not playing: screen was off less than " + (needed / 60000) + " min");
+                } else {
                     headUnitStarted();
                 }
+            } else if (isAccOff(a)) {
+                Prefs.log(context, "Car off signal: " + a);
+                stopPlayer();
             } else {
                 Prefs.log(context, "Received: " + a);
                 headUnitStarted();
@@ -152,6 +173,7 @@ public class DuaaService extends Service {
         f.addAction(Intent.ACTION_SCREEN_ON);
         f.addAction(Intent.ACTION_SCREEN_OFF);
         for (String a : ACC_ON_ACTIONS) f.addAction(a);
+        for (String a : ACC_OFF_ACTIONS) f.addAction(a);
         Compat.registerExported(this, headUnitReceiver, f);
     }
 
@@ -274,7 +296,6 @@ public class DuaaService extends Service {
                     AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
             acquireWakeLock();
             player.start();
-            markPlayed();
             Prefs.log(this, "▶ Playing: " + dua.title + " (" + rec.name + ")");
         } catch (Exception e) {
             Prefs.log(this, "Playback error: " + e.getMessage());
@@ -305,6 +326,18 @@ public class DuaaService extends Service {
         long last = Prefs.get(this).getLong(Prefs.LAST_PLAYED, 0);
         long now = System.currentTimeMillis();
         return now >= last && now - last < ms;
+    }
+
+    private static boolean isAccOff(String action) {
+        for (String a : ACC_OFF_ACTIONS) if (a.equals(action)) return true;
+        return false;
+    }
+
+    private static String duration(long ms) {
+        long sec = ms / 1000;
+        if (ms <= 0) return "unknown time";
+        if (sec < 60) return sec + " s";
+        return (sec / 60) + " min";
     }
 
     private void markPlayed() {

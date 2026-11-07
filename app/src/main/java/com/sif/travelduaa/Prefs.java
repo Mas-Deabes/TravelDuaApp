@@ -31,6 +31,8 @@ public class Prefs {
     // Head unit settings
     public static final String HU_DELAY = "hu_delay";              // seconds
     public static final String HU_SCREEN_WAKE = "hu_screen_wake";  // also play on screen wake
+    public static final String HU_MIN_SLEEP_MIN = "hu_min_sleep";  // minutes screen must be off
+    public static final String SCREEN_OFF_AT = "screen_off_at";
 
     // Phone settings
     public static final String CARS = "cars";                      // set of "MAC|Name"
@@ -40,8 +42,6 @@ public class Prefs {
 
     /** Head unit: ACC ON + screen on together count as one start. */
     public static final long HU_DEBOUNCE_MS = 3 * 60 * 1000;
-    /** Head unit: screen must have been off this long to count as a new trip. */
-    public static final long HU_MIN_SLEEP_MS = 5 * 60 * 1000;
     /** Phone: a Bluetooth drop and reconnect within this time doesn't replay. */
     public static final long PHONE_DEBOUNCE_MS = 10 * 60 * 1000;
     /** Phone: longest wait for the car's Bluetooth audio to be ready. */
