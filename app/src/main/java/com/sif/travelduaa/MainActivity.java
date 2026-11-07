@@ -339,7 +339,11 @@ public class MainActivity extends Activity {
         if (checklist != null) content.addView(checklist);
         content.addView(duaCard());
         if (wide) {
-            // Left: header, checklist, duaa list.  Right: the selected duaa, test.
+            // Head units: Settings and Log under the "Choose the duaa" box.
+            LinearLayout buttons = pageButtons();
+            buttons.setPadding(0, 0, 0, ui.dp(14));
+            content.addView(buttons);
+            // Left: header, checklist, duaa list, buttons.  Right: the selected duaa, test.
             detail.addView(duaDetailCard());
             detail.addView(testCard());
         } else {
@@ -860,6 +864,13 @@ public class MainActivity extends Activity {
         return ui.buttonRow(buttons);
     }
 
+    /** ⚙️ Settings and 📋 Log, side by side. */
+    private LinearLayout pageButtons() {
+        return ui.buttonRow(
+                ui.button("⚙️  Settings", Ui.SECONDARY, v -> showPage(PAGE_SETTINGS)),
+                ui.button("📋  Log", Ui.SECONDARY, v -> showPage(PAGE_LOG)));
+    }
+
     private View header(boolean showMode) {
         LinearLayout h = ui.vertical();
         h.setPadding(ui.dp(4), 0, ui.dp(4), ui.dp(wide ? 12 : 18));
@@ -882,12 +893,10 @@ public class MainActivity extends Activity {
         titles.addView(ui.text("دعاء السفر", wide ? 18 : 20, Ui.GOLD));
         top.addView(titles, ui.weight(1));
 
-        if (showMode) {
-            TextView settings = ui.button("⚙️  Settings", Ui.SECONDARY, v -> showPage(PAGE_SETTINGS));
-            TextView log = ui.button("📋  Log", Ui.SECONDARY, v -> showPage(PAGE_LOG));
-            // On their own row under the title (phones and head units).
+        if (showMode && !wide) {
+            // Phones: Settings and Log on their own row under the title.
             h.addView(top);
-            LinearLayout buttons = ui.buttonRow(settings, log);
+            LinearLayout buttons = pageButtons();
             buttons.setPadding(0, ui.dp(12), 0, 0);
             h.addView(buttons);
             return h;
