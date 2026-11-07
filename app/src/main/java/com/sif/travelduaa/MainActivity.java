@@ -885,20 +885,12 @@ public class MainActivity extends Activity {
         if (showMode) {
             TextView settings = ui.button("⚙️  Settings", Ui.SECONDARY, v -> showPage(PAGE_SETTINGS));
             TextView log = ui.button("📋  Log", Ui.SECONDARY, v -> showPage(PAGE_LOG));
-            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            llp.leftMargin = ui.dp(8);
-            if (wide) {
-                top.addView(settings);
-                top.addView(log, llp);
-            } else {
-                // Phones: buttons on their own line under the title, so nothing is squashed.
-                h.addView(top);
-                LinearLayout buttons = ui.buttonRow(settings, log);
-                buttons.setPadding(0, ui.dp(12), 0, 0);
-                h.addView(buttons);
-                return h;
-            }
+            // On their own row under the title (phones and head units).
+            h.addView(top);
+            LinearLayout buttons = ui.buttonRow(settings, log);
+            buttons.setPadding(0, ui.dp(12), 0, 0);
+            h.addView(buttons);
+            return h;
         }
         h.addView(top);
         return h;
