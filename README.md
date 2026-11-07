@@ -155,7 +155,7 @@ Every build is signed with the same key, so a new version installs over the old 
 5. Under **Play when the head unit…**, choose:
    - **Starts up fully**: after a full restart, or when the unit was off longer than its sleep time
    - **Wakes from sleep**: car off, then back on, without a full restart (what most units do day to day)
-6. Set **Car must be off for at least** (default 1 min), so switching off and straight back on doesn't replay it.
+6. Set **Car must be off for at least** (default 1 min), so switching off and straight back on doesn't replay it. Set it to **0 min** to play every time the unit wakes, however short the stop.
 7. Set the **Delay after the car starts** (default 5 s). If you hear nothing or it's cut off, raise this to 5–10 s.
 8. **Optional: After the duaa, open.** Pick an app to open once the duaa has finished, e.g. **CPLink** for CarPlay / Android Auto.
    - Allow **Display over other apps** when asked. Android needs it to let Travel Duaa open another app.

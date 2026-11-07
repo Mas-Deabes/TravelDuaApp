@@ -258,6 +258,15 @@ public class DuaaService extends Service {
         handler.postDelayed(heartbeat, HEARTBEAT_MS);
     }
 
+    /**
+     * One car start can trigger several checks (screen, ignition, clocks) within seconds.
+     * Ignore repeats within this window: the "Car must be off" time, at least 30 s, at most 3 min.
+     */
+    private long huRepeatWindow() {
+        long min = Prefs.get(this).getInt(Prefs.HU_MIN_SLEEP_MIN, 1) * 60_000L;
+        return Math.max(30_000, Math.min(Prefs.HU_DEBOUNCE_MS, min));
+    }
+
     /** After a restart: if the app hadn't run for a while, the car was probably off. */
     private void checkTimeAway(String reason) {
         long last = Prefs.get(this).getLong(Prefs.LAST_ALIVE, 0);
@@ -265,7 +274,7 @@ public class DuaaService extends Service {
         long away = System.currentTimeMillis() - last;
         long needed = Prefs.get(this).getInt(Prefs.HU_MIN_SLEEP_MIN, 1) * 60_000L;
         Prefs.log(this, reason + ", last running " + duration(away) + " ago");
-        if (away >= needed) wokeUp();
+        if (away >= Math.max(needed, 10_000)) wokeUp();
     }
 
     /** The unit woke from sleep (car turned back on). */
@@ -283,8 +292,9 @@ public class DuaaService extends Service {
             Prefs.log(this, "Skipped: auto-play is off");
             return;
         }
-        if (playedWithin(Prefs.HU_DEBOUNCE_MS)) {
-            Prefs.log(this, "Skipped: already played in the last 3 min");
+        long window = huRepeatWindow();
+        if (playedWithin(window)) {
+            Prefs.log(this, "Skipped: already played in the last " + duration(window));
             return;
         }
         markPlayed();

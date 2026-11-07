@@ -519,7 +519,7 @@ public class MainActivity extends Activity {
                 p.getBoolean(Prefs.HU_SCREEN_WAKE, true),
                 (b, on) -> p.edit().putBoolean(Prefs.HU_SCREEN_WAKE, on).apply()));
         card.addView(minutesStepper("Car must be off for at least",
-                "So switching off and straight back on doesn't replay it.", Prefs.HU_MIN_SLEEP_MIN, 1));
+                "0 min = play every time it wakes, even after a quick off and on.", Prefs.HU_MIN_SLEEP_MIN, 1));
         card.addView(ui.divider());
         card.addView(stepper("Delay after the car starts",
                 "Gives the head unit time to wake its speakers.", Prefs.HU_DELAY, 5));
@@ -694,7 +694,7 @@ public class MainActivity extends Activity {
 
     private int changeMinutes(String key, int def, int by) {
         SharedPreferences p = Prefs.get(this);
-        int v = Math.max(1, Math.min(30, p.getInt(key, def) + by));
+        int v = Math.max(0, Math.min(30, p.getInt(key, def) + by));   // 0 = no minimum
         p.edit().putInt(key, v).apply();
         return v;
     }
